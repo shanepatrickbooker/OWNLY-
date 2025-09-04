@@ -39,7 +39,8 @@ export default function ReflectionScreen() {
       setIsDeepReflection(true);
       // Pre-select the mood from check-in
       if (params.mood) {
-        setSelectedMood(Number(params.mood));
+        const moodValue = Array.isArray(params.mood) ? params.mood[0] : params.mood;
+        setSelectedMood(Number(moodValue));
       }
     }
   }, [params.isDeepReflection, params.mood]);
@@ -73,35 +74,30 @@ export default function ReflectionScreen() {
     setIsSubmitting(true);
 
     try {
+      // Ensure selectedMood is a valid number
+      if (selectedMood === null) {
+        throw new Error('No mood selected');
+      }
+
+      let moodLabel: string;
+      
       if (isDeepReflection) {
-        // Update the most recent entry with the deeper reflection
-        const recentEntries = await getRecentMoodEntries(1);
-        if (recentEntries.length > 0) {
-          const mostRecent = recentEntries[0];
-          // For deep reflection mode, we need to update the existing entry
-          // Since we can't easily update AsyncStorage entries, we'll save a new enhanced entry
-          const moodLabel = Array.isArray(params.moodLabel) ? params.moodLabel[0] : params.moodLabel;
-          const selectedMoodOption = MOOD_OPTIONS.find(m => m.value === selectedMood) || 
-                                    { label: moodLabel || 'Unknown' };
-          
-          await saveMoodEntry({
-            mood_value: selectedMood!,
-            mood_label: selectedMoodOption.label,
-            reflection: reflection.trim(),
-            timestamp: new Date().toISOString()
-          });
-        }
+        // For deep reflection mode, use the passed mood label or find it
+        const paramMoodLabel = Array.isArray(params.moodLabel) ? params.moodLabel[0] : params.moodLabel;
+        const selectedMoodOption = MOOD_OPTIONS.find(m => m.value === selectedMood);
+        moodLabel = selectedMoodOption?.label || paramMoodLabel || 'Unknown';
       } else {
         // Regular reflection mode
         const selectedMoodOption = MOOD_OPTIONS.find(m => m.value === selectedMood);
-        
-        await saveMoodEntry({
-          mood_value: selectedMood!,
-          mood_label: selectedMoodOption?.label || 'Unknown',
-          reflection: reflection.trim(),
-          timestamp: new Date().toISOString()
-        });
+        moodLabel = selectedMoodOption?.label || 'Unknown';
       }
+      
+      await saveMoodEntry({
+        mood_value: selectedMood,
+        mood_label: moodLabel,
+        reflection: reflection.trim(),
+        timestamp: new Date().toISOString()
+      });
 
       setReflection('');
       if (!isDeepReflection) setSelectedMood(null);
