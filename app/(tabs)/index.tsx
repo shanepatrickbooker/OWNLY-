@@ -1,47 +1,65 @@
 import { router, useFocusEffect } from 'expo-router';
-import React, { useState, useCallback } from 'react';
-import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert, TextInput } from 'react-native';
 import { saveMoodEntry, getAllMoodEntries, getMoodEntryCount } from './database/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateTestData, getTestDataStats } from '../../utils/testDataGenerator';
-import { calculateStreak, getStreakDisplayText, shouldShowStreakPromptly, getMilestoneEmoji, formatStreakData } from '../../utils/streakTracking';
+import { calculateEngagement } from '../../utils/engagementRecognition';
+import { conversionService } from '../../services/conversionService';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
+import Logo from '../../components/Logo';
 
 // Mood options matching your mockup
 const MOODS = [
   { emoji: '😡', label: 'Angry', value: 1 },
-  { emoji: '😔', label: 'Frustrated', value: 2 },  
-  { emoji: '😐', label: 'Sad', value: 2 },
-  { emoji: '😊', label: 'Neutral', value: 3 },
-  { emoji: '😄', label: 'Content', value: 4 },
-  { emoji: '🤩', label: 'Joyful', value: 4 },
-  { emoji: '😆', label: 'Happy', value: 5 },
-  { emoji: '😲', label: 'Surprised', value: 4 },
+  { emoji: '😤', label: 'Frustrated', value: 2 },  
+  { emoji: '😔', label: 'Sad', value: 2 },
+  { emoji: '😐', label: 'Neutral', value: 3 },
+  { emoji: '😊', label: 'Content', value: 4 },
+  { emoji: '😄', label: 'Happy', value: 5 },
+  { emoji: '🤩', label: 'Joyful', value: 5 },
+  { emoji: '😲', label: 'Surprised', value: 3 },
   { emoji: '😟', label: 'Worried', value: 2 },
-  { emoji: '😰', label: 'Worried', value: 1 },
-  { emoji: '😤', label: 'Anxious', value: 2 }
+  { emoji: '😰', label: 'Anxious', value: 2 }
 ];
 
 export default function HomeScreen() {
   const [selectedMoodIndex, setSelectedMoodIndex] = useState<number | null>(null);
   const [savedEntries, setSavedEntries] = useState<any[]>([]);
-  const [streakData, setStreakData] = useState<any>(null);
-  const [showMilestone, setShowMilestone] = useState(false);
+  const [engagementData, setEngagementData] = useState<any>(null);
+  const [justSaved, setJustSaved] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showReflection, setShowReflection] = useState(false);
+  const [reflection, setReflection] = useState('');
+
+  // Check onboarding status on component mount
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, []);
+
+  const checkOnboardingStatus = async () => {
+    try {
+      const onboardingCompleted = await AsyncStorage.getItem('onboarding_completed');
+      if (onboardingCompleted !== 'true') {
+        // Navigate to onboarding if not completed
+        router.replace('/onboarding/welcome');
+      }
+    } catch (error) {
+      console.error('Error checking onboarding status:', error);
+      // If there's an error, default to showing onboarding
+      router.replace('/onboarding/welcome');
+    }
+  };
 
   const loadSavedEntries = useCallback(async () => {
     try {
       const entries = await getAllMoodEntries();
       setSavedEntries(entries);
       
-      // Calculate streak data (filter entries with timestamps)
+      // Calculate engagement data
       const entriesWithTimestamps = entries.filter(entry => entry.created_at);
-      const streak = calculateStreak(entriesWithTimestamps as any);
-      setStreakData(streak);
-      
-      // Show milestone celebration if this is a new milestone
-      if (streak.isMilestone && streak.currentStreak > 0) {
-        setShowMilestone(true);
-        // Auto-hide milestone after 5 seconds
-        setTimeout(() => setShowMilestone(false), 5000);
-      }
+      const engagement = calculateEngagement(entriesWithTimestamps as any);
+      setEngagementData(engagement);
     } catch (error) {
       console.error('Error loading saved entries:', error);
     }
@@ -49,23 +67,68 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => {
     loadSavedEntries();
+    // Clear any selected mood state when returning to the screen
+    setSelectedMoodIndex(null);
+    setJustSaved(false);
+    setShowReflection(false);
+    setReflection('');
   }, [loadSavedEntries]));
 
   const handleMoodSelect = (index: number, moodLabel: string, moodValue: number) => {
     setSelectedMoodIndex(index);
-    console.log(`Selected mood: ${moodLabel} (value: ${moodValue})`);
+    setJustSaved(true); // Show the options UI immediately
   };
 
-  const handleNext = () => {
-    if (selectedMoodIndex !== null) {
+  const handleTellUsMore = () => {
+    setShowReflection(true);
+  };
+
+  const handleNewCheckIn = async () => {
+    if (selectedMoodIndex === null) return;
+    
+    setIsSubmitting(true);
+    
+    try {
       const selectedMood = MOODS[selectedMoodIndex];
-      router.push({
-        pathname: '/reflection' as any,
-        params: {
-          mood: selectedMood.value,
-          moodLabel: selectedMood.label
-        }
+      
+      // Save the mood entry (with optional reflection)
+      await saveMoodEntry({
+        mood_value: selectedMood.value,
+        mood_label: selectedMood.label,
+        reflection: reflection.trim(), // Include reflection text if provided
+        timestamp: new Date().toISOString()
       });
+      
+      console.log(`✅ Check-in saved: ${selectedMood.label} (value: ${selectedMood.value})`);
+      
+      // Show alert notification
+      const hasReflection = reflection.trim().length > 0;
+      Alert.alert(
+        hasReflection ? 'Reflection Saved' : 'Check-in Saved',
+        `Your ${hasReflection ? 'reflection has' : 'mood has'} been saved privately on your device.`,
+        [{ 
+          text: 'OK', 
+          style: 'default',
+          onPress: () => {
+            // Clear all state after alert is dismissed
+            setSelectedMoodIndex(null);
+            setJustSaved(false);
+            setShowReflection(false);
+            setReflection('');
+          }
+        }]
+      );
+      
+      // Track for conversion triggers
+      await conversionService.trackMoodEntry();
+      
+      // Refresh entries display
+      await loadSavedEntries();
+      
+    } catch (error) {
+      console.error('Error saving mood entry:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -112,33 +175,22 @@ export default function HomeScreen() {
       console.log(`🎉 Successfully generated sample data! Total entries: ${count}`);
       console.log('💡 Check the Insights tab to see sentiment analysis patterns!');
       
-      // Show streak calculation
-      if (streakData) {
-        console.log('📈 Streak data:', formatStreakData(streakData));
-      }
-      
     } catch (error) {
       console.error('❌ Sample data generation failed:', error);
     }
   };
 
-  const testStreak = async () => {
+  const testEngagement = async () => {
     try {
-      console.log('📈 Testing streak calculation...');
+      console.log('📈 Testing engagement recognition...');
       const entries = await getAllMoodEntries();
       const entriesWithTimestamps = entries.filter(entry => entry.created_at);
-      const streak = calculateStreak(entriesWithTimestamps as any);
-      console.log('Streak data:', formatStreakData(streak));
-      console.log('Display text:', getStreakDisplayText(streak));
-      console.log('Should show prominently:', shouldShowStreakPromptly(streak));
+      const engagement = calculateEngagement(entriesWithTimestamps as any);
+      console.log('Engagement data:', engagement);
       
-      if (streak.isMilestone) {
-        console.log('🎉 Milestone reached!', streak.milestoneMessage);
-      }
-      
-      setStreakData(streak);
+      setEngagementData(engagement);
     } catch (error) {
-      console.error('❌ Streak test failed:', error);
+      console.error('❌ Engagement test failed:', error);
     }
   };
 
@@ -146,25 +198,13 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
-        <Text style={styles.title}>OWNLY</Text>
+        <Logo size="large" showIcon={true} horizontal={false} style={styles.logo} />
         
-        {/* Streak Display */}
-        {streakData && shouldShowStreakPromptly(streakData) && (
-          <View style={styles.streakContainer}>
-            <Text style={styles.streakText}>
-              {getMilestoneEmoji(streakData.currentStreak)} {getStreakDisplayText(streakData)}
-            </Text>
-          </View>
-        )}
-        
-        {/* Milestone Celebration */}
-        {showMilestone && streakData?.isMilestone && (
-          <View style={styles.milestoneContainer}>
-            <Text style={styles.milestoneEmoji}>
-              {getMilestoneEmoji(streakData.currentStreak)}
-            </Text>
-            <Text style={styles.milestoneText}>
-              {streakData.milestoneMessage}
+        {/* Engagement Recognition */}
+        {engagementData && engagementData.showMessage && (
+          <View style={styles.engagementContainer}>
+            <Text style={styles.engagementText}>
+              {engagementData.message}
             </Text>
           </View>
         )}
@@ -189,11 +229,53 @@ export default function HomeScreen() {
           ))}
         </View>
         
-        {/* Next Button */}
-        {selectedMoodIndex !== null && (
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>Next</Text>
-          </TouchableOpacity>
+        {/* Success State & Options */}
+        {justSaved && selectedMoodIndex !== null && (
+          <View style={styles.successContainer}>
+            <Text style={styles.successMessage}>
+              {MOODS[selectedMoodIndex].emoji} Feeling {MOODS[selectedMoodIndex].label.toLowerCase()}
+            </Text>
+            
+            {!showReflection ? (
+              <View style={styles.optionsContainer}>
+                <TouchableOpacity style={styles.tellUsMoreButton} onPress={handleTellUsMore}>
+                  <Text style={styles.tellUsMoreButtonText}>Tell us more?</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.doneButton} onPress={handleNewCheckIn}>
+                  <Text style={styles.doneButtonText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.reflectionContainer}>
+                <Text style={styles.reflectionLabel}>How are you feeling?</Text>
+                <TextInput
+                  style={styles.reflectionInput}
+                  value={reflection}
+                  onChangeText={setReflection}
+                  placeholder="Tell us more about how you're feeling..."
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+                <View style={styles.reflectionButtons}>
+                  <TouchableOpacity style={styles.skipButton} onPress={handleNewCheckIn}>
+                    <Text style={styles.skipButtonText}>Skip</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.saveButton} onPress={handleNewCheckIn}>
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+        
+        {/* Loading State */}
+        {isSubmitting && (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Saving...</Text>
+          </View>
         )}
         
         {/* Test Buttons */}
@@ -204,8 +286,8 @@ export default function HomeScreen() {
           <TouchableOpacity style={styles.sampleDataButton} onPress={generateSampleData}>
             <Text style={styles.sampleDataButtonText}>Generate Sample Data</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.streakTestButton} onPress={testStreak}>
-            <Text style={styles.streakTestButtonText}>Test Streak</Text>
+          <TouchableOpacity style={styles.engagementTestButton} onPress={testEngagement}>
+            <Text style={styles.engagementTestButtonText}>Test Engagement</Text>
           </TouchableOpacity>
         </View>
         
@@ -233,198 +315,279 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9ff', // Light background like mockup
+    backgroundColor: Colors.background.primary,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    paddingBottom: 60, // Extra padding at bottom so Next button is visible
+    paddingHorizontal: Layout.screenPadding,
+    paddingTop: Spacing['5xl'],
+    paddingBottom: Spacing['8xl'],
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-    color: '#1f2937',
+  logo: {
+    marginBottom: Spacing['2xl'],
   },
-  streakContainer: {
+  engagementContainer: {
     alignItems: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 16,
+    marginBottom: Spacing.xl,
+    paddingHorizontal: Spacing.base,
+    backgroundColor: Colors.primary[50],
+    borderRadius: BorderRadius.lg,
+    paddingVertical: Spacing.md,
+    marginHorizontal: Spacing.sm,
+    ...Shadows.card,
   },
-  streakText: {
-    fontSize: 16,
-    color: '#6B7280',
-    fontWeight: '500',
+  engagementText: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.primary[700],
+    fontWeight: Typography.fontWeight.medium as any,
     textAlign: 'center',
-    opacity: 0.8,
-  },
-  milestoneContainer: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    alignItems: 'center',
-    borderLeftWidth: 4,
-    borderLeftColor: '#F59E0B',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  milestoneEmoji: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  milestoneText: {
-    fontSize: 16,
-    color: '#92400E',
-    textAlign: 'center',
-    fontWeight: '600',
-    lineHeight: 22,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
   question: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: Typography.fontSize['3xl'],
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'left',
-    marginBottom: 30,
-    color: '#1f2937',
+    marginBottom: Spacing['3xl'],
+    color: Colors.text.primary,
+    letterSpacing: Typography.letterSpacing.tight,
   },
   moodGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 15, // Space between items
-    marginHorizontal: 10,
-    marginBottom: 20,
+    gap: Spacing.base,
+    marginHorizontal: Spacing.sm,
+    marginBottom: Spacing.xl,
   },
   moodButton: {
-    width: 100, // Fixed width instead of percentage
-    height: 100, // Fixed height
+    width: 108,
+    height: 108,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
-    backgroundColor: '#ffffff',
-    margin: 5, // Individual margin for better spacing
-    // Cross-platform shadow
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3.84,
-      },
-      android: {
-        elevation: 5,
-      },
-      web: {
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-      },
-    }),
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.background.secondary,
+    margin: Spacing.xs,
+    borderWidth: 2,
+    borderColor: Colors.neutral[100],
+    ...Shadows.button,
+    transform: [{ scale: 1 }],
   },
   selectedMood: {
-    backgroundColor: '#6366F1', // Purple from your color scheme
-    transform: [{ scale: 0.95 }],
+    backgroundColor: Colors.primary[500],
+    borderColor: Colors.primary[400],
+    ...Shadows.brand,
+    transform: [{ scale: 0.98 }],
   },
   moodEmoji: {
-    fontSize: 32,
-    marginBottom: 8,
+    fontSize: 36,
+    marginBottom: Spacing.sm,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   moodLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#374151',
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.medium as any,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+    letterSpacing: Typography.letterSpacing.wide,
+  },
+  successContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.success[50],
+    borderRadius: BorderRadius.xl,
+    marginHorizontal: Spacing.base,
+    ...Shadows.card,
+  },
+  successMessage: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.text.primary,
+    marginBottom: Spacing.lg,
     textAlign: 'center',
   },
-  nextButton: {
-    backgroundColor: '#6366F1', // Purple primary color
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 25,
-    alignSelf: 'center',
-    marginTop: 20,
+  optionsContainer: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  tellUsMoreButton: {
+    backgroundColor: Colors.primary[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
     minWidth: 120,
+    ...Shadows.button,
   },
-  nextButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
+  tellUsMoreButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
+  },
+  reflectionContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  reflectionLabel: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.medium as any,
+    color: Colors.text.secondary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  reflectionInput: {
+    width: '100%',
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    fontSize: Typography.fontSize.base,
+    color: Colors.text.primary,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    marginBottom: Spacing.lg,
+  },
+  reflectionButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+    justifyContent: 'center',
+  },
+  skipButton: {
+    backgroundColor: Colors.neutral[300],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    minWidth: 80,
+    ...Shadows.button,
+  },
+  skipButtonText: {
+    color: Colors.text.primary,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
+    textAlign: 'center',
+  },
+  saveButton: {
+    backgroundColor: Colors.success[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    minWidth: 100,
+    ...Shadows.button,
+  },
+  saveButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
+    textAlign: 'center',
+  },
+  doneButton: {
+    backgroundColor: Colors.neutral[200],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.lg,
+    minWidth: 80,
+    ...Shadows.button,
+  },
+  doneButtonText: {
+    color: Colors.text.primary,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    marginTop: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  loadingText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.medium as any,
+    color: Colors.text.secondary,
   },
   testButtonsContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.md,
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: Spacing['2xl'],
     flexWrap: 'wrap',
+    paddingHorizontal: Spacing.base,
   },
   testButton: {
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    minWidth: 120,
+    backgroundColor: Colors.secondary[500],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    minWidth: 130,
+    ...Shadows.button,
   },
   testButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
   },
   sampleDataButton: {
-    backgroundColor: '#8B5CF6',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    minWidth: 140,
+    backgroundColor: Colors.primary[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    minWidth: 150,
+    ...Shadows.button,
   },
   sampleDataButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
   },
-  streakTestButton: {
-    backgroundColor: '#EF4444',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    minWidth: 120,
+  engagementTestButton: {
+    backgroundColor: Colors.accent[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    minWidth: 150,
+    ...Shadows.button,
   },
-  streakTestButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '600',
+  engagementTestButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
   },
   entriesContainer: {
-    marginTop: 30,
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    marginHorizontal: 10,
+    marginTop: Spacing['3xl'],
+    padding: Layout.cardPadding,
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.lg,
+    marginHorizontal: Spacing.sm,
+    ...Shadows.card,
   },
   entriesTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 12,
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.text.primary,
+    marginBottom: Spacing.md,
   },
   entryItem: {
-    marginBottom: 12,
-    paddingBottom: 8,
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: Colors.neutral[200],
   },
   entryText: {
-    fontSize: 14,
-    color: '#374151',
-    marginBottom: 4,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
+    marginBottom: Spacing.xs,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
   },
   entryTimestamp: {
-    fontSize: 12,
-    color: '#9CA3AF',
+    fontSize: Typography.fontSize.xs,
+    color: Colors.text.tertiary,
   },
 });
