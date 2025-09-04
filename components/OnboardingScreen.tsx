@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius, Layout } from '../constants/Design';
-import Logo from './Logo';
+import HeaderLogo from './HeaderLogo';
 
 interface OnboardingScreenProps {
   title: string;
@@ -33,7 +33,7 @@ export default function OnboardingScreen({
 }: OnboardingScreenProps) {
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingTop: 0 }]} showsVerticalScrollIndicator={false}>
         {/* Progress indicator */}
         {progress && (
           <View style={styles.progressContainer}>
@@ -51,9 +51,7 @@ export default function OnboardingScreen({
 
         {/* Logo */}
         {showLogo && (
-          <View style={styles.logoContainer}>
-            <Logo size="large" showIcon={true} horizontal={false} />
-          </View>
+          <HeaderLogo variant="onboarding" />
         )}
 
         {/* Header */}
@@ -125,11 +123,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xs,
     color: Colors.text.tertiary,
     fontWeight: Typography.fontWeight.medium as any,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginTop: Spacing['4xl'],
-    marginBottom: Spacing.xl,
   },
   headerContainer: {
     alignItems: 'center',

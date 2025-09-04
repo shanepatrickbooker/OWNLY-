@@ -20,7 +20,7 @@ import { useSubscription } from '../../contexts/SubscriptionContext';
 import { conversionService } from '../../services/conversionService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { notificationService, NotificationSettings } from '../../services/notificationService';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 
 interface SettingsSection {
   title: string;
@@ -954,8 +954,8 @@ Your emotional journey belongs to you.`,
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <Logo size="medium" showIcon={true} horizontal={true} style={styles.logo} />
+        <HeaderLogo />
+        <View style={styles.titleContainer}>
           <Text style={styles.title}>Settings</Text>
           <Text style={styles.subtitle}>Manage your data and preferences</Text>
         </View>
@@ -984,12 +984,9 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: Spacing['8xl'],
   },
-  header: {
+  titleContainer: {
+    alignItems: 'center',
     paddingHorizontal: Layout.screenPadding,
-    paddingTop: Spacing['5xl'],
-    paddingBottom: Spacing.xl,
-  },
-  logo: {
     marginBottom: Spacing.lg,
   },
   title: {

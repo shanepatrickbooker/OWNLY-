@@ -17,7 +17,7 @@ import { useSubscription } from '../../contexts/SubscriptionContext';
 import { FREE_TIER_LIMITS } from '../../types/subscription';
 import { conversionService } from '../../services/conversionService';
 import PremiumLock from '../../components/PremiumLock';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 import EmotionalFlow from '../../components/EmotionalFlow';
 
 export default function InsightsScreen() {
@@ -133,13 +133,15 @@ export default function InsightsScreen() {
         }
       >
         {/* Header */}
-        <Logo size="medium" showIcon={true} horizontal={true} style={styles.logo} />
-        <Text style={styles.title}>
-          {entryCount < 3 ? 'Your Patterns' : 'Your Key Pattern'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {getEntryCountMessage(entryCount)}
-        </Text>
+        <HeaderLogo />
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>
+            {entryCount < 3 ? 'Your Patterns' : 'Your Key Pattern'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {getEntryCountMessage(entryCount)}
+          </Text>
+        </View>
 
         {/* Update Status */}
         {lastUpdated && entryCount >= 3 && !loading && (
@@ -337,10 +339,11 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Layout.screenPadding,
-    paddingTop: Spacing['5xl'],
     paddingBottom: Spacing['8xl'],
   },
-  logo: {
+  titleContainer: {
+    alignItems: 'center',
+    paddingHorizontal: Layout.screenPadding,
     marginBottom: Spacing.lg,
   },
   title: {

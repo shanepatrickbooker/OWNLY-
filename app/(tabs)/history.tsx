@@ -19,7 +19,7 @@ import { useSubscription } from '../../contexts/SubscriptionContext';
 import { FREE_TIER_LIMITS } from '../../types/subscription';
 import { getMoodColors } from '../../utils/visualizations';
 import EmotionalFlow from '../../components/EmotionalFlow';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 
 interface MoodEntry {
   id?: number;
@@ -191,7 +191,7 @@ export default function HistoryScreen() {
   };
 
   const renderEntry = ({ item }: { item: MoodEntry }) => {
-    const colors = getMoodColors(item.mood_value, item.sentiment_data);
+    const colors = getMoodColors(item.mood_value, (item as any).sentiment_data);
     
     return (
       <View style={[
@@ -260,8 +260,8 @@ export default function HistoryScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <Logo size="medium" showIcon={true} horizontal={true} style={styles.logo} />
+      <HeaderLogo />
+      <View style={styles.titleContainer}>
         <Text style={styles.title}>Your Journey</Text>
         <Text style={styles.subtitle}>
           {entries.length} reflection{entries.length !== 1 ? 's' : ''} recorded
@@ -368,12 +368,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background.primary,
   },
-  header: {
+  titleContainer: {
+    alignItems: 'center',
     paddingHorizontal: Layout.screenPadding,
-    paddingTop: Spacing['5xl'],
-    paddingBottom: Spacing.xl,
-  },
-  logo: {
     marginBottom: Spacing.lg,
   },
   title: {

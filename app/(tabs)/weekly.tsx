@@ -14,7 +14,7 @@ import { useFocusEffect } from 'expo-router';
 import { getAllMoodEntries } from './database/database';
 import { generateWeeklySummary, getAvailableWeeks, WeeklySummary } from '../../utils/weeklyAnalysis';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -213,8 +213,8 @@ export default function WeeklyScreen() {
           contentContainerStyle={styles.scrollContent}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={loadEntries} />}
         >
-          <View style={styles.header}>
-            <Logo size="medium" showIcon={true} horizontal={true} style={styles.logo} />
+          <HeaderLogo />
+          <View style={styles.titleContainer}>
             <Text style={styles.title}>Weekly Patterns</Text>
             <Text style={styles.subtitle}>Understanding your emotional rhythms</Text>
           </View>
@@ -231,8 +231,8 @@ export default function WeeklyScreen() {
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadEntries} />}
       >
-        <View style={styles.header}>
-          <Logo size="medium" showIcon={true} horizontal={true} style={styles.logo} />
+        <HeaderLogo />
+        <View style={styles.titleContainer}>
           <Text style={styles.title}>Weekly Patterns</Text>
           <Text style={styles.subtitle}>Understanding your emotional rhythms</Text>
         </View>
@@ -268,12 +268,9 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: Spacing['8xl'],
   },
-  header: {
+  titleContainer: {
+    alignItems: 'center',
     paddingHorizontal: Layout.screenPadding,
-    paddingTop: Spacing['5xl'],
-    paddingBottom: Spacing.xl,
-  },
-  logo: {
     marginBottom: Spacing.lg,
   },
   title: {

@@ -17,17 +17,17 @@ export default function LogoShowcase() {
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Large Primary (Hero)</Text>
-            <Logo size="large" variant="primary" />
+            <Logo size="large" />
           </View>
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Medium with Icon (Headers)</Text>
-            <Logo size="medium" showIcon={true} horizontal={true} />
+            <Logo size="medium" />
           </View>
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Small Compact</Text>
-            <Logo size="small" showIcon={true} horizontal={true} />
+            <Logo size="small" />
           </View>
         </View>
 
@@ -37,17 +37,17 @@ export default function LogoShowcase() {
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Primary (Standard)</Text>
-            <Logo size="medium" variant="primary" showIcon={true} />
+            <Logo size="medium" />
           </View>
           
           <View style={[styles.logoContainer, { backgroundColor: Colors.neutral[800] }]}>
             <Text style={[styles.logoLabel, { color: Colors.text.inverse }]}>Light (On Dark)</Text>
-            <Logo size="medium" variant="light" showIcon={true} />
+            <Logo size="medium" />
           </View>
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Dark Treatment</Text>
-            <Logo size="medium" variant="dark" showIcon={true} />
+            <Logo size="medium" />
           </View>
         </View>
 
@@ -57,17 +57,17 @@ export default function LogoShowcase() {
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Horizontal</Text>
-            <Logo size="medium" horizontal={true} showIcon={true} />
+            <Logo size="medium" />
           </View>
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Vertical</Text>
-            <Logo size="medium" horizontal={false} showIcon={true} />
+            <Logo size="medium" />
           </View>
           
           <View style={styles.logoContainer}>
             <Text style={styles.logoLabel}>Text Only</Text>
-            <Logo size="medium" showIcon={false} />
+            <Logo size="medium" />
           </View>
         </View>
 

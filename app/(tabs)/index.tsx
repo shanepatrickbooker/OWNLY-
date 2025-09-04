@@ -7,7 +7,7 @@ import { generateTestData, getTestDataStats } from '../../utils/testDataGenerato
 import { calculateEngagement } from '../../utils/engagementRecognition';
 import { conversionService } from '../../services/conversionService';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 
 // Mood options matching your mockup
 const MOODS = [
@@ -197,7 +197,7 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
-        <Logo size="large" showIcon={true} horizontal={false} style={styles.logo} />
+        <HeaderLogo />
         
         {/* Engagement Recognition */}
         {engagementData && engagementData.showMessage && (
@@ -374,11 +374,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: Layout.screenPadding,
-    paddingTop: Spacing['5xl'],
     paddingBottom: Spacing['8xl'],
-  },
-  logo: {
-    marginBottom: Spacing['2xl'],
   },
   engagementContainer: {
     alignItems: 'center',
@@ -528,7 +524,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   saveButton: {
-    backgroundColor: Colors.success[600],
+    backgroundColor: Colors.primary[600],
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.xl,
     borderRadius: BorderRadius.lg,

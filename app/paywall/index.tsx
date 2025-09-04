@@ -14,7 +14,7 @@ import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../consta
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { SUBSCRIPTION_TIERS, CONVERSION_TRIGGERS } from '../../types/subscription';
 import { subscriptionService } from '../../services/subscriptionService';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 
 export default function PaywallScreen() {
   const { trigger = 'general', features } = useLocalSearchParams<{ trigger?: string; features?: string }>();
@@ -134,7 +134,7 @@ export default function PaywallScreen() {
           >
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
-          <Logo size="medium" showIcon={true} style={styles.logo} />
+          <HeaderLogo />
         </View>
 
         {/* Main Content */}
@@ -287,11 +287,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.lg,
     color: Colors.text.secondary,
     fontWeight: Typography.fontWeight.medium as any,
-  },
-  logo: {
-    flex: 1,
-    alignItems: 'center',
-    marginRight: 32, // Balance the close button
   },
   content: {
     paddingHorizontal: Spacing.lg,

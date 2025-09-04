@@ -13,7 +13,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { Colors, Typography, Spacing } from '../../constants/Design';
 import { saveMoodEntry, getRecentMoodEntries, MoodEntry } from './database/database';
 import { conversionService } from '../../services/conversionService';
-import Logo from '../../components/Logo';
+import HeaderLogo from '../../components/HeaderLogo';
 
 const MOOD_OPTIONS = [
   { emoji: '😄', label: 'Great', value: 5 },
@@ -150,8 +150,8 @@ export default function ReflectionScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-        <View style={styles.header}>
-          <Logo size="small" />
+        <HeaderLogo />
+        <View style={styles.titleContainer}>
           <Text style={styles.title}>
             {isDeepReflection ? 'Deep Reflection' : 'Daily Reflection'}
           </Text>
@@ -285,11 +285,10 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingBottom: Spacing.xl,
   },
-  header: {
+  titleContainer: {
     alignItems: 'center',
-    paddingTop: Spacing.xl,
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    marginBottom: Spacing.lg,
   },
   title: {
     fontSize: Typography.fontSize['3xl'],

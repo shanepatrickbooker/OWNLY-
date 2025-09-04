@@ -4,37 +4,36 @@
     "slug": "OWNLY",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+  "icon": "./assets/images/icon-ios-1024.png",
     "scheme": "ownly",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "description": "OWNLY is a private mood tracking app that helps you understand your emotional patterns through sentiment analysis and personalized insights. Track your daily moods, reflect on your feelings, and discover patterns to improve your mental wellness.",
-    "privacy": "https://yourwebsite.com/privacy-policy",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.ownly",
+      "bundleIdentifier": "com.4PDS4LH9S9.ownly",
       "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/adaptive-foreground-1024.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.yourcompany.ownly",
+      "package": "com.4PDS4LH9S9.ownly",
       "versionCode": 1
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+  "favicon": "./assets/images/favicon-32.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-icon-200.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
