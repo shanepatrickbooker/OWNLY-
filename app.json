@@ -8,15 +8,21 @@
     "scheme": "ownly",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "description": "OWNLY is a private mood tracking app that helps you understand your emotional patterns through sentiment analysis and personalized insights. Track your daily moods, reflect on your feelings, and discover patterns to improve your mental wellness.",
+    "privacy": "https://yourwebsite.com/privacy-policy",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.ownly",
+      "buildNumber": "1"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.yourcompany.ownly",
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",

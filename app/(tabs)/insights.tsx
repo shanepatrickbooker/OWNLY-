@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import React, { useState, useCallback } from 'react';
 import { 
   SafeAreaView, 
@@ -12,38 +12,52 @@ import {
 } from 'react-native';
 import { getAllMoodEntries } from './database/database';
 import { generateInsights, MoodInsight } from '../../utils/sentimentAnalysis';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import { FREE_TIER_LIMITS } from '../../types/subscription';
+import { conversionService } from '../../services/conversionService';
+import PremiumLock from '../../components/PremiumLock';
+import Logo from '../../components/Logo';
+import EmotionalFlow from '../../components/EmotionalFlow';
 
 export default function InsightsScreen() {
+  const { hasPremium } = useSubscription();
   const [insights, setInsights] = useState<MoodInsight[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entryCount, setEntryCount] = useState(0);
   const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [entries, setEntries] = useState<any[]>([]);
 
   const loadInsights = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
-      const entries = await getAllMoodEntries();
-      setEntryCount(entries.length);
+      const allEntries = await getAllMoodEntries();
+      setEntries(allEntries);
+      setEntryCount(allEntries.length);
       
-      if (entries.length < 3) {
+      if (allEntries.length < 3) {
         setInsights([]);
         setLastUpdated(new Date());
         return;
       }
 
-      const entriesWithTimestamps = entries.filter(entry => entry.created_at);
+      const entriesWithTimestamps = allEntries.filter(entry => entry.created_at);
       
       // Add small delay to show loading state
       await new Promise(resolve => setTimeout(resolve, 300));
       
       const generatedInsights = generateInsights(entriesWithTimestamps as any);
+      console.log(`🧠 Generated ${generatedInsights.length} insights:`, generatedInsights.map(i => i.type));
       setInsights(generatedInsights);
       setCurrentInsightIndex(0);
       setLastUpdated(new Date());
+
+      // Track insights view for conversion triggers
+      await conversionService.trackInsightsView();
     } catch (err) {
       console.error('Error loading insights:', err);
       setError('Unable to analyze your patterns right now. Please try again.');
@@ -119,6 +133,7 @@ export default function InsightsScreen() {
         }
       >
         {/* Header */}
+        <Logo size="medium" showIcon={true} horizontal={true} style={styles.logo} />
         <Text style={styles.title}>
           {entryCount < 3 ? 'Your Patterns' : 'Your Key Pattern'}
         </Text>
@@ -131,6 +146,26 @@ export default function InsightsScreen() {
           <Text style={styles.updateStatus}>
             Updated {getTimeAgo(lastUpdated)} • Insights refresh as you add entries
           </Text>
+        )}
+
+        {/* Visualizations Section */}
+        {!loading && !error && entries.length > 1 && (
+          <View style={styles.visualizationsSection}>
+            {/* Emotional Flow */}
+            <View style={styles.visualizationCard}>
+              <Text style={styles.visualizationTitle}>Emotional Flow</Text>
+              <EmotionalFlow 
+                entries={entries} 
+                width={320} 
+                height={140} 
+                days={hasPremium ? 30 : 14} 
+                showTrend={true} 
+              />
+              <Text style={styles.visualizationSubtext}>
+                {hasPremium ? 'Full 30-day view' : 'Last 14 days • Upgrade for full history'}
+              </Text>
+            </View>
+          </View>
         )}
 
         {/* Loading State */}
@@ -176,12 +211,29 @@ export default function InsightsScreen() {
               </View>
             ) : insights.length === 0 ? (
               <View style={styles.emptyStateContainer}>
-                <Text style={styles.emptyStateIcon}>🔍</Text>
-                <Text style={styles.emptyStateTitle}>Looking for patterns</Text>
+                <Text style={styles.emptyStateIcon}>🌱</Text>
+                <Text style={styles.emptyStateTitle}>Building your patterns</Text>
                 <Text style={styles.emptyStateText}>
-                  Your patterns are still emerging. Keep adding reflections to discover 
-                  your unique emotional rhythms.
+                  Your emotional patterns are still taking shape. Each reflection helps 
+                  create a clearer picture of your unique rhythms and experiences.
                 </Text>
+                
+                <View style={styles.patternsHintCard}>
+                  <Text style={styles.hintTitle}>What We're Looking For</Text>
+                  <Text style={styles.hintText}>
+                    • Common emotional themes in your reflections{'\n'}
+                    • Times when you feel most/least balanced{'\n'}
+                    • Coping strategies that work well for you{'\n'}
+                    • Patterns in your emotional growth
+                  </Text>
+                </View>
+                
+                <View style={styles.timelineHint}>
+                  <Text style={styles.timelineText}>
+                    💡 <Text style={styles.timelineBold}>Your first insights typically appear after 5-7 entries</Text> 
+                    {'\n\n'}Most meaningful patterns emerge over 2-3 weeks of natural use.
+                  </Text>
+                </View>
               </View>
             ) : (
               <>
@@ -195,6 +247,13 @@ export default function InsightsScreen() {
                   <Text style={styles.insightIcon}>
                     {getInsightIcon(insights[currentInsightIndex].type)}
                   </Text>
+                  {!hasPremium && (
+                    <View style={styles.tierBadge}>
+                      <Text style={styles.tierText}>
+                        {currentInsightIndex < FREE_TIER_LIMITS.maxInsightsPerSession ? 'FREE' : 'PREMIUM'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <Text style={styles.insightText}>
                   {insights[currentInsightIndex].observation}
@@ -235,11 +294,20 @@ export default function InsightsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.navButton, currentInsightIndex === insights.length - 1 && styles.navButtonDisabled]}
-                    onPress={() => setCurrentInsightIndex(Math.min(insights.length - 1, currentInsightIndex + 1))}
+                    onPress={() => {
+                      const nextIndex = currentInsightIndex + 1;
+                      if (!hasPremium && nextIndex >= FREE_TIER_LIMITS.maxInsightsPerSession) {
+                        // Show paywall for premium insights
+                        router.push('/paywall?trigger=mood_entries_10');
+                      } else if (nextIndex < insights.length) {
+                        setCurrentInsightIndex(nextIndex);
+                      }
+                    }}
                     disabled={currentInsightIndex === insights.length - 1}
                   >
                     <Text style={[styles.navButtonText, currentInsightIndex === insights.length - 1 && styles.navButtonTextDisabled]}>
-                      Next insight
+                      {!hasPremium && currentInsightIndex >= FREE_TIER_LIMITS.maxInsightsPerSession - 1 ? 
+                        'Unlock More' : 'Next insight'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -265,91 +333,99 @@ export default function InsightsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9ff',
+    backgroundColor: Colors.background.primary,
   },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    paddingBottom: 60,
+    paddingHorizontal: Layout.screenPadding,
+    paddingTop: Spacing['5xl'],
+    paddingBottom: Spacing['8xl'],
+  },
+  logo: {
+    marginBottom: Spacing.lg,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: Typography.fontSize['4xl'],
+    fontWeight: Typography.fontWeight.bold as any,
     textAlign: 'center',
-    marginBottom: 8,
-    color: '#1f2937',
+    marginBottom: Spacing.sm,
+    color: Colors.text.primary,
+    letterSpacing: Typography.letterSpacing.tight,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: Typography.fontSize.base,
     textAlign: 'center',
-    marginBottom: 16,
-    color: '#6B7280',
+    marginBottom: Spacing.lg,
+    color: Colors.text.tertiary,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
   updateStatus: {
-    fontSize: 12,
+    fontSize: Typography.fontSize.xs,
     textAlign: 'center',
-    marginBottom: 24,
-    color: '#9CA3AF',
+    marginBottom: Spacing.xl,
+    color: Colors.text.tertiary,
     fontStyle: 'italic',
+    opacity: 0.8,
   },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 60,
+    paddingVertical: Spacing['6xl'],
   },
   loadingEmoji: {
     fontSize: 48,
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   loadingText: {
-    fontSize: 18,
-    color: '#6B7280',
+    fontSize: Typography.fontSize.lg,
+    color: Colors.text.tertiary,
     textAlign: 'center',
   },
   errorContainer: {
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
+    paddingVertical: Spacing['6xl'],
+    paddingHorizontal: Layout.screenPadding,
   },
   errorEmoji: {
     fontSize: 48,
-    marginBottom: 16,
+    marginBottom: Spacing.lg,
   },
   errorTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#EF4444',
-    marginBottom: 8,
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.error,
+    marginBottom: Spacing.sm,
     textAlign: 'center',
   },
   errorText: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: Typography.fontSize.base,
+    color: Colors.text.tertiary,
     textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 24,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+    marginBottom: Spacing.xl,
   },
   retryButton: {
-    backgroundColor: '#6366F1',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
+    backgroundColor: Colors.primary[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.xl,
+    ...Shadows.button,
   },
   retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
   },
   disclaimerContainer: {
-    marginTop: 30,
-    paddingHorizontal: 20,
+    marginTop: Spacing['3xl'],
+    paddingHorizontal: Layout.screenPadding,
   },
   disclaimer: {
-    fontSize: 14,
-    color: '#9CA3AF',
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.tertiary,
     textAlign: 'center',
     fontStyle: 'italic',
-    lineHeight: 20,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
+    opacity: 0.8,
   },
   currentInsightContainer: {
     flex: 1,
@@ -357,15 +433,15 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   suggestionContainer: {
-    marginTop: 20,
-    paddingTop: 20,
+    marginTop: Spacing.xl,
+    paddingTop: Spacing.xl,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: Colors.neutral[200],
   },
   suggestionText: {
-    fontSize: 15,
-    color: '#6B7280',
-    lineHeight: 22,
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.tertiary,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
     fontStyle: 'italic',
   },
   navigationContainer: {
@@ -383,84 +459,127 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   activeDot: {
-    backgroundColor: '#6366F1',
+    backgroundColor: Colors.primary[600],
   },
   inactiveDot: {
-    backgroundColor: '#D1D5DB',
+    backgroundColor: Colors.neutral[300],
   },
   navigationButtons: {
     flexDirection: 'row',
     gap: 16,
   },
   navButton: {
-    backgroundColor: '#6366F1',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    minWidth: 100,
+    backgroundColor: Colors.primary[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.xl,
+    minWidth: 110,
+    ...Shadows.button,
   },
   navButtonDisabled: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: Colors.neutral[200],
+    ...Shadows.button,
   },
   navButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
   },
   navButtonTextDisabled: {
-    color: '#9CA3AF',
+    color: Colors.text.tertiary,
   },
   emptyStateContainer: {
     alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
+    paddingVertical: Spacing['5xl'],
+    paddingHorizontal: Layout.screenPadding,
   },
   emptyStateIcon: {
-    fontSize: 48,
-    marginBottom: 16,
+    fontSize: 52,
+    marginBottom: Spacing.lg,
+    textShadowColor: 'rgba(139, 92, 246, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 12,
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.text.primary,
+    marginBottom: Spacing.md,
     textAlign: 'center',
   },
   emptyStateText: {
-    fontSize: 16,
-    color: '#6B7280',
+    fontSize: Typography.fontSize.base,
+    color: Colors.text.tertiary,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+    marginBottom: Spacing.xl,
+  },
+  patternsHintCard: {
+    backgroundColor: Colors.secondary[50],
+    borderRadius: BorderRadius.lg,
+    padding: Layout.cardPadding,
+    marginHorizontal: Layout.screenPadding,
+    marginBottom: Spacing.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.secondary[400],
+  },
+  hintTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.secondary[800],
+    marginBottom: Spacing.sm,
+    textAlign: 'center',
+  },
+  hintText: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.secondary[700],
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+  },
+  timelineHint: {
+    backgroundColor: Colors.primary[50],
+    borderRadius: BorderRadius.lg,
+    padding: Layout.cardPadding,
+    marginHorizontal: Layout.screenPadding,
+  },
+  timelineText: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.primary[700],
+    textAlign: 'center',
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+  },
+  timelineBold: {
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.primary[800],
   },
   insightsContainer: {
     gap: 16,
   },
   insightCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 30,
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius['2xl'],
+    padding: Spacing['3xl'],
     borderWidth: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
-    marginHorizontal: 10,
+    ...Shadows.floating,
+    marginHorizontal: Spacing.sm,
   },
   insightHeader: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: Spacing.xl,
   },
   insightIcon: {
-    fontSize: 40,
+    fontSize: 44,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
   insightText: {
-    fontSize: 20,
-    color: '#1f2937',
-    lineHeight: 28,
+    fontSize: Typography.fontSize.xl,
+    color: Colors.text.primary,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.xl,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: Typography.fontWeight.medium as any,
+    letterSpacing: Typography.letterSpacing.normal,
   },
   supportingData: {
     fontSize: 14,
@@ -485,5 +604,44 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0C4A6E',
     lineHeight: 20,
+  },
+  tierBadge: {
+    backgroundColor: Colors.primary[100],
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs / 2,
+    borderRadius: BorderRadius.sm,
+    position: 'absolute',
+    top: -Spacing.sm,
+    right: -Spacing.sm,
+  },
+  tierText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.bold as any,
+    color: Colors.primary[600],
+  },
+  visualizationsSection: {
+    marginBottom: Spacing['3xl'],
+    gap: Spacing.lg,
+  },
+  visualizationCard: {
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    ...Shadows.card,
+  },
+  visualizationTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.text.primary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  visualizationSubtext: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.tertiary,
+    textAlign: 'center',
+    marginTop: Spacing.md,
+    fontStyle: 'italic',
   },
 });

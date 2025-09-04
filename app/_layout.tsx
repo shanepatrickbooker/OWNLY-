@@ -1,3 +1,4 @@
+import 'react-native-get-random-values'; // Must be imported before react-native-purchases
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -7,6 +8,9 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { initializeDatabase } from './(tabs)/database/database';
+import { SubscriptionProvider } from '../contexts/SubscriptionContext';
+import { notificationService } from '../services/notificationService';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -15,7 +19,12 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    initializeDatabase().catch(console.error);
+    const initializeApp = async () => {
+      await initializeDatabase();
+      await notificationService.initialize();
+    };
+    
+    initializeApp().catch(console.error);
   }, []);
 
   if (!loaded) {
@@ -24,12 +33,18 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <SubscriptionProvider>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="paywall" options={{ headerShown: false }} />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+        </SubscriptionProvider>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

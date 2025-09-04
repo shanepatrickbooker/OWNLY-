@@ -45,7 +45,7 @@ export default function HomeScreen() {
         router.replace('/onboarding/welcome');
       }
     } catch (error) {
-      console.error('Error checking onboarding status:', error);
+      if (__DEV__) console.error('Error checking onboarding status:', error);
       // If there's an error, default to showing onboarding
       router.replace('/onboarding/welcome');
     }
@@ -61,7 +61,7 @@ export default function HomeScreen() {
       const engagement = calculateEngagement(entriesWithTimestamps as any);
       setEngagementData(engagement);
     } catch (error) {
-      console.error('Error loading saved entries:', error);
+      if (__DEV__) console.error('Error loading saved entries:', error);
     }
   }, []);
 
@@ -99,7 +99,6 @@ export default function HomeScreen() {
         timestamp: new Date().toISOString()
       });
       
-      console.log(`✅ Check-in saved: ${selectedMood.label} (value: ${selectedMood.value})`);
       
       // Show alert notification
       const hasReflection = reflection.trim().length > 0;
@@ -126,7 +125,7 @@ export default function HomeScreen() {
       await loadSavedEntries();
       
     } catch (error) {
-      console.error('Error saving mood entry:', error);
+      if (__DEV__) console.error('Error saving mood entry:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -134,7 +133,7 @@ export default function HomeScreen() {
 
   const testDatabase = async () => {
     try {
-      console.log('🧪 Testing database functionality...');
+      if (__DEV__) console.log('🧪 Testing database functionality...');
       
       // Test saving a mood entry
       const testEntry = {
@@ -145,25 +144,25 @@ export default function HomeScreen() {
       };
       
       const savedId = await saveMoodEntry(testEntry);
-      console.log('✅ Test entry saved with ID:', savedId);
+      if (__DEV__) console.log('✅ Test entry saved with ID:', savedId);
       
       // Refresh the entries display
       await loadSavedEntries();
       
       // Get count
       const count = await getMoodEntryCount();
-      console.log('📈 Total entries:', count);
+      if (__DEV__) console.log('📈 Total entries:', count);
       
     } catch (error) {
-      console.error('❌ Database test failed:', error);
+      if (__DEV__) console.error('❌ Database test failed:', error);
     }
   };
 
   const generateSampleData = async () => {
     try {
-      console.log('🎭 Generating sample data for sentiment analysis demo...');
+      if (__DEV__) console.log('🎭 Generating sample data for sentiment analysis demo...');
       const stats = getTestDataStats();
-      console.log('📊 Will generate:', stats);
+      if (__DEV__) console.log('📊 Will generate:', stats);
       
       await generateTestData();
       
@@ -172,25 +171,25 @@ export default function HomeScreen() {
       
       // Get final count
       const count = await getMoodEntryCount();
-      console.log(`🎉 Successfully generated sample data! Total entries: ${count}`);
-      console.log('💡 Check the Insights tab to see sentiment analysis patterns!');
+      if (__DEV__) console.log(`🎉 Successfully generated sample data! Total entries: ${count}`);
+      if (__DEV__) console.log('💡 Check the Insights tab to see sentiment analysis patterns!');
       
     } catch (error) {
-      console.error('❌ Sample data generation failed:', error);
+      if (__DEV__) console.error('❌ Sample data generation failed:', error);
     }
   };
 
   const testEngagement = async () => {
     try {
-      console.log('📈 Testing engagement recognition...');
+      if (__DEV__) console.log('📈 Testing engagement recognition...');
       const entries = await getAllMoodEntries();
       const entriesWithTimestamps = entries.filter(entry => entry.created_at);
       const engagement = calculateEngagement(entriesWithTimestamps as any);
-      console.log('Engagement data:', engagement);
+      if (__DEV__) console.log('Engagement data:', engagement);
       
       setEngagementData(engagement);
     } catch (error) {
-      console.error('❌ Engagement test failed:', error);
+      if (__DEV__) console.error('❌ Engagement test failed:', error);
     }
   };
 
@@ -222,6 +221,10 @@ export default function HomeScreen() {
                 selectedMoodIndex === index && styles.selectedMood
               ]}
               onPress={() => handleMoodSelect(index, mood.label, mood.value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Select ${mood.label} mood`}
+              accessibilityHint={`Tap to select ${mood.label} mood with emoji ${mood.emoji}`}
+              accessibilityState={{ selected: selectedMoodIndex === index }}
             >
               <Text style={styles.moodEmoji}>{mood.emoji}</Text>
               <Text style={styles.moodLabel}>{mood.label}</Text>
@@ -238,11 +241,23 @@ export default function HomeScreen() {
             
             {!showReflection ? (
               <View style={styles.optionsContainer}>
-                <TouchableOpacity style={styles.tellUsMoreButton} onPress={handleTellUsMore}>
+                <TouchableOpacity 
+                  style={styles.tellUsMoreButton} 
+                  onPress={handleTellUsMore}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tell us more"
+                  accessibilityHint="Tap to add a reflection about your mood"
+                >
                   <Text style={styles.tellUsMoreButtonText}>Tell us more?</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity style={styles.doneButton} onPress={handleNewCheckIn}>
+                <TouchableOpacity 
+                  style={styles.doneButton} 
+                  onPress={handleNewCheckIn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done"
+                  accessibilityHint="Tap to save your mood check-in"
+                >
                   <Text style={styles.doneButtonText}>Done</Text>
                 </TouchableOpacity>
               </View>
@@ -257,12 +272,26 @@ export default function HomeScreen() {
                   multiline
                   numberOfLines={4}
                   textAlignVertical="top"
+                  accessibilityLabel="Reflection text field"
+                  accessibilityHint="Write about your feelings and thoughts"
                 />
                 <View style={styles.reflectionButtons}>
-                  <TouchableOpacity style={styles.skipButton} onPress={handleNewCheckIn}>
+                  <TouchableOpacity 
+                    style={styles.skipButton} 
+                    onPress={handleNewCheckIn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Skip reflection"
+                    accessibilityHint="Skip writing a reflection and save your mood"
+                  >
                     <Text style={styles.skipButtonText}>Skip</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.saveButton} onPress={handleNewCheckIn}>
+                  <TouchableOpacity 
+                    style={styles.saveButton} 
+                    onPress={handleNewCheckIn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save reflection"
+                    accessibilityHint="Save your mood and reflection"
+                  >
                     <Text style={styles.saveButtonText}>Save</Text>
                   </TouchableOpacity>
                 </View>
@@ -280,21 +309,39 @@ export default function HomeScreen() {
         
         {/* Test Buttons */}
         <View style={styles.testButtonsContainer}>
-          <TouchableOpacity style={styles.testButton} onPress={testDatabase}>
+          <TouchableOpacity 
+            style={styles.testButton} 
+            onPress={testDatabase}
+            accessibilityRole="button"
+            accessibilityLabel="Test database"
+            accessibilityHint="Test database functionality for development"
+          >
             <Text style={styles.testButtonText}>Test Database</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.sampleDataButton} onPress={generateSampleData}>
+          <TouchableOpacity 
+            style={styles.sampleDataButton} 
+            onPress={generateSampleData}
+            accessibilityRole="button"
+            accessibilityLabel="Generate sample data"
+            accessibilityHint="Generate test mood entries for development"
+          >
             <Text style={styles.sampleDataButtonText}>Generate Sample Data</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.engagementTestButton} onPress={testEngagement}>
+          <TouchableOpacity 
+            style={styles.engagementTestButton} 
+            onPress={testEngagement}
+            accessibilityRole="button"
+            accessibilityLabel="Test engagement"
+            accessibilityHint="Test engagement recognition for development"
+          >
             <Text style={styles.engagementTestButtonText}>Test Engagement</Text>
           </TouchableOpacity>
         </View>
         
-        {/* Show Saved Entries */}
-        {savedEntries.length > 0 && (
+        {/* Show Saved Entries or Empty State */}
+        {savedEntries.length > 0 ? (
           <View style={styles.entriesContainer}>
-            <Text style={styles.entriesTitle}>Saved Entries ({savedEntries.length}):</Text>
+            <Text style={styles.entriesTitle}>Recent Entries ({savedEntries.length}):</Text>
             {savedEntries.slice(0, 3).map((entry, index) => (
               <View key={entry.id} style={styles.entryItem}>
                 <Text style={styles.entryText}>
@@ -305,6 +352,14 @@ export default function HomeScreen() {
                 </Text>
               </View>
             ))}
+          </View>
+        ) : (
+          <View style={styles.emptyStateContainer}>
+            <Text style={styles.emptyStateEmoji}>📝</Text>
+            <Text style={styles.emptyStateTitle}>Start Your Journey</Text>
+            <Text style={styles.emptyStateMessage}>
+              Select how you're feeling today to begin tracking your emotional patterns and insights.
+            </Text>
           </View>
         )}
       </ScrollView>
@@ -589,5 +644,32 @@ const styles = StyleSheet.create({
   entryTimestamp: {
     fontSize: Typography.fontSize.xs,
     color: Colors.text.tertiary,
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    marginTop: Spacing['3xl'],
+    paddingVertical: Spacing['2xl'],
+    paddingHorizontal: Spacing.lg,
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.xl,
+    marginHorizontal: Spacing.sm,
+  },
+  emptyStateEmoji: {
+    fontSize: 48,
+    marginBottom: Spacing.lg,
+  },
+  emptyStateTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.text.primary,
+    marginBottom: Spacing.md,
+    textAlign: 'center',
+  },
+  emptyStateMessage: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+    maxWidth: 280,
   },
 });

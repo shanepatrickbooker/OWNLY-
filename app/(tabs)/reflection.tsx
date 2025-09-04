@@ -49,7 +49,7 @@ export default function ReflectionScreen() {
       const recent = await getRecentMoodEntries(3);
       setRecentEntries(recent);
     } catch (error) {
-      console.error('Error loading recent entries:', error);
+      if (__DEV__) console.error('Error loading recent entries:', error);
     }
   };
 
@@ -80,8 +80,9 @@ export default function ReflectionScreen() {
           const mostRecent = recentEntries[0];
           // For deep reflection mode, we need to update the existing entry
           // Since we can't easily update AsyncStorage entries, we'll save a new enhanced entry
+          const moodLabel = Array.isArray(params.moodLabel) ? params.moodLabel[0] : params.moodLabel;
           const selectedMoodOption = MOOD_OPTIONS.find(m => m.value === selectedMood) || 
-                                    { label: params.moodLabel || 'Unknown' };
+                                    { label: moodLabel || 'Unknown' };
           
           await saveMoodEntry({
             mood_value: selectedMood!,
@@ -123,7 +124,7 @@ export default function ReflectionScreen() {
         }]
       );
     } catch (error) {
-      console.error('Error saving reflection:', error);
+      if (__DEV__) console.error('Error saving reflection:', error);
       Alert.alert(
         'Save Error',
         'There was an issue saving your reflection. Please try again.'
