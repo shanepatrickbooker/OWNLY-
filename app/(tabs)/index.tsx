@@ -3,7 +3,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert, TextInput } from 'react-native';
 import { saveMoodEntry, getAllMoodEntries, getMoodEntryCount } from './database/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { generateTestData, getTestDataStats } from '../../utils/testDataGenerator';
 import { calculateEngagement } from '../../utils/engagementRecognition';
 import { conversionService } from '../../services/conversionService';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
@@ -131,67 +130,6 @@ export default function HomeScreen() {
     }
   };
 
-  const testDatabase = async () => {
-    try {
-      if (__DEV__) console.log('🧪 Testing database functionality...');
-      
-      // Test saving a mood entry
-      const testEntry = {
-        mood_value: 5,
-        mood_label: 'Happy',
-        reflection: 'Testing database functionality with a happy mood!',
-        timestamp: new Date().toISOString()
-      };
-      
-      const savedId = await saveMoodEntry(testEntry);
-      if (__DEV__) console.log('✅ Test entry saved with ID:', savedId);
-      
-      // Refresh the entries display
-      await loadSavedEntries();
-      
-      // Get count
-      const count = await getMoodEntryCount();
-      if (__DEV__) console.log('📈 Total entries:', count);
-      
-    } catch (error) {
-      if (__DEV__) console.error('❌ Database test failed:', error);
-    }
-  };
-
-  const generateSampleData = async () => {
-    try {
-      if (__DEV__) console.log('🎭 Generating sample data for sentiment analysis demo...');
-      const stats = getTestDataStats();
-      if (__DEV__) console.log('📊 Will generate:', stats);
-      
-      await generateTestData();
-      
-      // Refresh the entries display
-      await loadSavedEntries();
-      
-      // Get final count
-      const count = await getMoodEntryCount();
-      if (__DEV__) console.log(`🎉 Successfully generated sample data! Total entries: ${count}`);
-      if (__DEV__) console.log('💡 Check the Insights tab to see sentiment analysis patterns!');
-      
-    } catch (error) {
-      if (__DEV__) console.error('❌ Sample data generation failed:', error);
-    }
-  };
-
-  const testEngagement = async () => {
-    try {
-      if (__DEV__) console.log('📈 Testing engagement recognition...');
-      const entries = await getAllMoodEntries();
-      const entriesWithTimestamps = entries.filter(entry => entry.created_at);
-      const engagement = calculateEngagement(entriesWithTimestamps as any);
-      if (__DEV__) console.log('Engagement data:', engagement);
-      
-      setEngagementData(engagement);
-    } catch (error) {
-      if (__DEV__) console.error('❌ Engagement test failed:', error);
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -210,6 +148,7 @@ export default function HomeScreen() {
         
         {/* Main Question */}
         <Text style={styles.question}>Check In</Text>
+        <Text style={styles.stepInstruction}>Tap an emoji below that matches your mood</Text>
         
         {/* Mood Grid - 3x4 layout like your mockup */}
         <View style={styles.moodGrid}>
@@ -263,12 +202,12 @@ export default function HomeScreen() {
               </View>
             ) : (
               <View style={styles.reflectionContainer}>
-                <Text style={styles.reflectionLabel}>How are you feeling?</Text>
+                <Text style={styles.reflectionLabel}>Add details about how you're feeling (optional)</Text>
                 <TextInput
                   style={styles.reflectionInput}
                   value={reflection}
                   onChangeText={setReflection}
-                  placeholder="Tell us more about how you're feeling..."
+                  placeholder="What's on your mind? This is your private space to reflect..."
                   multiline
                   numberOfLines={4}
                   textAlignVertical="top"
@@ -289,10 +228,10 @@ export default function HomeScreen() {
                     style={styles.saveButton} 
                     onPress={handleNewCheckIn}
                     accessibilityRole="button"
-                    accessibilityLabel="Save reflection"
+                    accessibilityLabel="Save mood entry"
                     accessibilityHint="Save your mood and reflection"
                   >
-                    <Text style={styles.saveButtonText}>Save</Text>
+                    <Text style={styles.saveButtonText}>Save Check-In</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -306,37 +245,6 @@ export default function HomeScreen() {
             <Text style={styles.loadingText}>Saving...</Text>
           </View>
         )}
-        
-        {/* Test Buttons */}
-        <View style={styles.testButtonsContainer}>
-          <TouchableOpacity 
-            style={styles.testButton} 
-            onPress={testDatabase}
-            accessibilityRole="button"
-            accessibilityLabel="Test database"
-            accessibilityHint="Test database functionality for development"
-          >
-            <Text style={styles.testButtonText}>Test Database</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.sampleDataButton} 
-            onPress={generateSampleData}
-            accessibilityRole="button"
-            accessibilityLabel="Generate sample data"
-            accessibilityHint="Generate test mood entries for development"
-          >
-            <Text style={styles.sampleDataButtonText}>Generate Sample Data</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.engagementTestButton} 
-            onPress={testEngagement}
-            accessibilityRole="button"
-            accessibilityLabel="Test engagement"
-            accessibilityHint="Test engagement recognition for development"
-          >
-            <Text style={styles.engagementTestButtonText}>Test Engagement</Text>
-          </TouchableOpacity>
-        </View>
         
         {/* Show Saved Entries or Empty State */}
         {savedEntries.length > 0 ? (
@@ -397,9 +305,17 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize['3xl'],
     fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'left',
-    marginBottom: Spacing['3xl'],
+    marginBottom: Spacing.sm,
     color: Colors.text.primary,
     letterSpacing: Typography.letterSpacing.tight,
+  },
+  stepInstruction: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.medium as any,
+    textAlign: 'left',
+    marginBottom: Spacing['3xl'],
+    color: Colors.text.tertiary,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
   moodGrid: {
     flexDirection: 'row',
@@ -560,56 +476,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.medium as any,
     color: Colors.text.secondary,
-  },
-  testButtonsContainer: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-    justifyContent: 'center',
-    marginTop: Spacing['2xl'],
-    flexWrap: 'wrap',
-    paddingHorizontal: Spacing.base,
-  },
-  testButton: {
-    backgroundColor: Colors.secondary[500],
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    minWidth: 130,
-    ...Shadows.button,
-  },
-  testButtonText: {
-    color: Colors.text.inverse,
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold as any,
-    textAlign: 'center',
-  },
-  sampleDataButton: {
-    backgroundColor: Colors.primary[600],
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    minWidth: 150,
-    ...Shadows.button,
-  },
-  sampleDataButtonText: {
-    color: Colors.text.inverse,
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold as any,
-    textAlign: 'center',
-  },
-  engagementTestButton: {
-    backgroundColor: Colors.accent[600],
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    minWidth: 150,
-    ...Shadows.button,
-  },
-  engagementTestButtonText: {
-    color: Colors.text.inverse,
-    fontSize: Typography.fontSize.sm,
-    fontWeight: Typography.fontWeight.semibold as any,
-    textAlign: 'center',
   },
   entriesContainer: {
     marginTop: Spacing['3xl'],

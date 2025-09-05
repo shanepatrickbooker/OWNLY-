@@ -74,12 +74,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="database"
-        options={{
-          href: null, // Hide from tabs
-        }}
-      />
-      <Tabs.Screen
         name="reflection"
         options={{
           href: null, // Hide from tabs - functionality moved to home screen
