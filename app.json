@@ -12,7 +12,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.4PDS4LH9S9.ownly",
-      "buildNumber": "2"
+      "buildNumber": "3"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +21,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.4PDS4LH9S9.ownly",
-      "versionCode": 2
+      "versionCode": 3
     },
     "web": {
       "bundler": "metro",
