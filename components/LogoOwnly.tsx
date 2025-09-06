@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 
 type Props = { size?: number };
 
@@ -10,8 +10,10 @@ export default function LogoOwnly({ size = 96 }: Props) {
       style={{
         width: size,
         height: size,
-        resizeMode: 'contain'
       }}
+      contentFit="contain"
+      cachePolicy="memory-disk"
+      transition={200}
     />
   );
 }

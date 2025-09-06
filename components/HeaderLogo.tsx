@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, ViewStyle, Image, Dimensions } from 'react-native';
+import { View, ViewStyle, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spacing } from '../constants/Design';
 
@@ -41,9 +42,11 @@ export default function HeaderLogo({
         style={{
           width: logoSize,
           height: logoSize,
-          resizeMode: 'contain',
           backgroundColor: 'transparent'
         }}
+        contentFit="contain"
+        cachePolicy="memory-disk"
+        transition={200}
       />
     </View>
   );

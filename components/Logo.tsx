@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, ViewStyle, Image } from 'react-native';
+import { View, ViewStyle } from 'react-native';
+import { Image } from 'expo-image';
 
 interface LogoProps {
   size?: 'small' | 'medium' | 'large' | 'icon';
@@ -31,9 +32,11 @@ export default function Logo({
       style={{
         width: iconSize,
         height: iconSize,
-        resizeMode: 'contain',
         backgroundColor: 'transparent'
       }}
+      contentFit="contain"
+      cachePolicy="memory-disk"
+      transition={200}
     />
   );
 

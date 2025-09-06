@@ -12,8 +12,10 @@ import {
 } from 'react-native';
 import { getAllMoodEntries } from './database/database';
 import { generateInsights, MoodInsight } from '../../utils/sentimentAnalysis';
-import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
+import { InteractionManager } from 'react-native';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout, getColors } from '../../constants/Design';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { FREE_TIER_LIMITS } from '../../types/subscription';
 import { conversionService } from '../../services/conversionService';
 import PremiumLock from '../../components/PremiumLock';
@@ -22,6 +24,10 @@ import EmotionalFlow from '../../components/EmotionalFlow';
 
 export default function InsightsScreen() {
   const { hasPremium } = useSubscription();
+  const { isDark } = useTheme();
+  
+  // Get theme-appropriate colors
+  const colors = getColors(isDark);
   const [insights, setInsights] = useState<MoodInsight[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,10 +53,13 @@ export default function InsightsScreen() {
 
       const entriesWithTimestamps = allEntries.filter(entry => entry.created_at);
       
+      // Show loading state immediately, then run expensive calculations after interactions
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Add small delay to show loading state
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      const generatedInsights = generateInsights(entriesWithTimestamps as any);
+      const generatedInsights = generateInsights(entriesWithTimestamps as any, hasPremium);
       console.log(`🧠 Generated ${generatedInsights.length} insights:`, generatedInsights.map(i => i.type));
       setInsights(generatedInsights);
       setCurrentInsightIndex(0);
@@ -92,6 +101,51 @@ export default function InsightsScreen() {
     return `From ${count} reflection${count !== 1 ? 's' : ''}`;
   };
 
+  const getCategoryColor = (category: string): string => {
+    switch (category) {
+      case 'prediction': return Colors.warning + '20'; // Light orange
+      case 'discovery': return Colors.primary[500] + '20'; // Light blue  
+      case 'trend': return Colors.success + '20'; // Light green
+      case 'cycle': return Colors.neutral[400] + '20'; // Light gray
+      default: return Colors.neutral[100];
+    }
+  };
+
+  const getCategoryEmoji = (category: string): string => {
+    switch (category) {
+      case 'prediction': return '🎯';
+      case 'discovery': return '💡';
+      case 'trend': return '📈';
+      case 'cycle': return '🔄';
+      default: return '📊';
+    }
+  };
+
+  const getVisualSuccessRate = (successRate: number, frequency: number): string => {
+    const successes = Math.round(successRate * frequency);
+    
+    // Smart visual scaling based on frequency
+    if (frequency <= 6) {
+      // Show all checkmarks for small datasets
+      let visual = '';
+      for (let i = 0; i < frequency; i++) {
+        visual += i < successes ? '✅' : '⬜';
+      }
+      return `${visual} Works ${successes}/${frequency} times`;
+    } else if (frequency <= 10) {
+      // Show representative sample for medium datasets  
+      let visual = '';
+      for (let i = 0; i < 6; i++) {
+        visual += i < Math.round(successes * 6 / frequency) ? '✅' : '⬜';
+      }
+      return `${visual}... Works ${successes}/${frequency} times`;
+    } else {
+      // Use text-only for large datasets
+      const percentage = Math.round(successRate * 100);
+      return `Works ${successes}/${frequency} times (${percentage}%)`;
+    }
+  };
+
   const getInsightIcon = (type: MoodInsight['type']) => {
     switch (type) {
       case 'nuanced_emotions': return '🎭';
@@ -123,6 +177,9 @@ export default function InsightsScreen() {
       default: return '#6366F1';
     }
   };
+
+  // Create theme-aware styles
+  const styles = createStyles(colors);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -246,24 +303,83 @@ export default function InsightsScreen() {
                 { borderColor: getInsightColor(insights[currentInsightIndex].type) }
               ]}>
                 <View style={styles.insightHeader}>
-                  <Text style={styles.insightIcon}>
-                    {getInsightIcon(insights[currentInsightIndex].type)}
-                  </Text>
-                  {!hasPremium && (
-                    <View style={styles.tierBadge}>
-                      <Text style={styles.tierText}>
-                        {currentInsightIndex < FREE_TIER_LIMITS.maxInsightsPerSession ? 'FREE' : 'PREMIUM'}
+                  <View style={styles.iconAndCategory}>
+                    <Text style={styles.insightIcon}>
+                      {getInsightIcon(insights[currentInsightIndex].type)}
+                    </Text>
+                    {insights[currentInsightIndex].patternCategory && (
+                      <View style={[styles.categoryBadge, { backgroundColor: getCategoryColor(insights[currentInsightIndex].patternCategory!) }]}>
+                        <Text style={styles.categoryText}>
+                          {getCategoryEmoji(insights[currentInsightIndex].patternCategory!)} {insights[currentInsightIndex].patternCategory!.toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.headerBadges}>
+                    {insights[currentInsightIndex].trendDirection && (
+                      <Text style={styles.trendArrow}>
+                        {insights[currentInsightIndex].trendDirection === 'improving' ? '↗️' : 
+                         insights[currentInsightIndex].trendDirection === 'declining' ? '↘️' : '➡️'}
                       </Text>
-                    </View>
-                  )}
+                    )}
+                  </View>
                 </View>
                 <Text style={styles.insightText}>
                   {insights[currentInsightIndex].observation}
                 </Text>
-                {insights[currentInsightIndex].actionableSuggestion && (
-                  <View style={styles.suggestionContainer}>
-                    <Text style={styles.suggestionText}>
-                      💭 {insights[currentInsightIndex].actionableSuggestion}
+                {/* Streamlined Evidence & Action Section */}
+                {(insights[currentInsightIndex].successRate || insights[currentInsightIndex].actionableSuggestion) && (
+                  <View style={styles.streamlinedFooter}>
+                    {/* Visual Success Rate (Premium Only) */}
+                    {insights[currentInsightIndex].successRate && hasPremium && (
+                      <Text style={styles.visualSuccessRate}>
+                        {getVisualSuccessRate(
+                          insights[currentInsightIndex].successRate!, 
+                          insights[currentInsightIndex].frequency || 4
+                        )}
+                      </Text>
+                    )}
+                    
+                    {/* Actionable Suggestion (Premium) or Upgrade Prompt (Free) */}
+                    {insights[currentInsightIndex].actionableSuggestion && (
+                      <>
+                        {hasPremium ? (
+                          <Text style={styles.actionText}>
+                            {insights[currentInsightIndex].actionableSuggestion}
+                          </Text>
+                        ) : (
+                          <TouchableOpacity 
+                            style={styles.upgradePrompt}
+                            onPress={() => router.push('/paywall')}
+                          >
+                            <Text style={styles.upgradePromptText}>
+                              🚀 Upgrade for personalized suggestions
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                    
+                    {/* Premium Teaser Cards */}
+                    {(insights[currentInsightIndex].supportingData?.isPremiumTeaser || 
+                      insights[currentInsightIndex].supportingData?.isPredictionTeaser) && (
+                      <TouchableOpacity 
+                        style={styles.premiumTeaserCard}
+                        onPress={() => router.push('/paywall')}
+                      >
+                        <Text style={styles.premiumTeaserText}>
+                          {insights[currentInsightIndex].actionableSuggestion}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+                
+                {/* Time Context Footer */}
+                {insights[currentInsightIndex].timeContext && (
+                  <View style={styles.contextFooter}>
+                    <Text style={styles.contextText}>
+                      🕐 {insights[currentInsightIndex].timeContext}
                     </Text>
                   </View>
                 )}
@@ -332,10 +448,10 @@ export default function InsightsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: typeof Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: colors.background.primary,
   },
   scrollContent: {
     paddingHorizontal: Layout.screenPadding,
@@ -351,21 +467,21 @@ const styles = StyleSheet.create({
     fontWeight: Typography.fontWeight.bold as any,
     textAlign: 'center',
     marginBottom: Spacing.sm,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     letterSpacing: Typography.letterSpacing.tight,
   },
   subtitle: {
     fontSize: Typography.fontSize.base,
     textAlign: 'center',
     marginBottom: Spacing.lg,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
   updateStatus: {
     fontSize: Typography.fontSize.xs,
     textAlign: 'center',
     marginBottom: Spacing.xl,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     fontStyle: 'italic',
     opacity: 0.8,
   },
@@ -379,7 +495,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: Typography.fontSize.lg,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
   },
   errorContainer: {
@@ -400,7 +516,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: Typography.fontSize.base,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
     marginBottom: Spacing.xl,
@@ -424,7 +540,7 @@ const styles = StyleSheet.create({
   },
   disclaimer: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
     fontStyle: 'italic',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
@@ -435,17 +551,99 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 40,
   },
-  suggestionContainer: {
-    marginTop: Spacing.xl,
-    paddingTop: Spacing.xl,
+  streamlinedFooter: {
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.neutral[200],
+    borderTopColor: Colors.neutral[100],
+    gap: Spacing.md,
   },
-  suggestionText: {
+  visualSuccessRate: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.text.tertiary,
+    color: Colors.success,
+    fontWeight: Typography.fontWeight.medium as any,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
+  },
+  actionText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
     fontStyle: 'italic',
+  },
+  // Enhanced visual elements
+  iconAndCategory: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  headerBadges: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  categoryBadge: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.md,
+  },
+  categoryText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.bold as any,
+    color: Colors.text.secondary,
+  },
+  upgradePrompt: {
+    backgroundColor: Colors.primary[50],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary[200],
+  },
+  upgradePromptText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.primary[700],
+    fontWeight: Typography.fontWeight.medium as any,
+    textAlign: 'center',
+  },
+  premiumTeaserCard: {
+    backgroundColor: Colors.primary[50],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary[200],
+  },
+  trendArrow: {
+    fontSize: 18,
+  },
+  contextFooter: {
+    marginTop: Spacing.lg,
+    paddingTop: Spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.neutral[100],
+  },
+  contextText: {
+    fontSize: Typography.fontSize.xs,
+    color: colors.text.tertiary,
+    fontStyle: 'italic',
+  },
+  premiumTeaserText: {
+    color: Colors.primary[600],
+    fontWeight: Typography.fontWeight.medium as any,
+  },
+  upgradeButton: {
+    backgroundColor: Colors.primary[600],
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+    marginTop: Spacing.md,
+    ...Shadows.button,
+  },
+  upgradeButtonText: {
+    color: Colors.text.inverse,
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.semibold as any,
+    textAlign: 'center',
   },
   navigationContainer: {
     alignItems: 'center',
@@ -490,7 +688,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   navButtonTextDisabled: {
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
   },
   emptyStateContainer: {
     alignItems: 'center',
@@ -507,13 +705,13 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.md,
     textAlign: 'center',
   },
   emptyStateText: {
     fontSize: Typography.fontSize.base,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
     marginBottom: Spacing.xl,
@@ -559,7 +757,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   insightCard: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius['2xl'],
     padding: Spacing['3xl'],
     borderWidth: 2,
@@ -567,6 +765,8 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.sm,
   },
   insightHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: Spacing.xl,
   },
@@ -578,7 +778,7 @@ const styles = StyleSheet.create({
   },
   insightText: {
     fontSize: Typography.fontSize.xl,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.xl,
     textAlign: 'center',
     fontWeight: Typography.fontWeight.medium as any,
@@ -627,7 +827,7 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
   },
   visualizationCard: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     alignItems: 'center',
@@ -636,13 +836,13 @@ const styles = StyleSheet.create({
   visualizationTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.md,
     textAlign: 'center',
   },
   visualizationSubtext: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
     marginTop: Spacing.md,
     fontStyle: 'italic',

@@ -18,6 +18,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="privacy" />
       <Stack.Screen name="how-it-works" />
       <Stack.Screen name="sentiment-analysis" />
+      <Stack.Screen name="enhanced-patterns" />
       <Stack.Screen name="expectations" />
       <Stack.Screen name="boundaries" />
       <Stack.Screen name="notifications" />

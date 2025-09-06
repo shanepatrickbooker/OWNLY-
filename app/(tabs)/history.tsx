@@ -1,5 +1,5 @@
 import { useFocusEffect, router } from 'expo-router';
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, memo } from 'react';
 import { 
   SafeAreaView, 
   ScrollView, 
@@ -14,8 +14,9 @@ import {
   Alert
 } from 'react-native';
 import { getAllMoodEntries } from './database/database';
-import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout, getColors } from '../../constants/Design';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { FREE_TIER_LIMITS } from '../../types/subscription';
 import { getMoodColors } from '../../utils/visualizations';
 import EmotionalFlow from '../../components/EmotionalFlow';
@@ -57,6 +58,10 @@ const MOOD_FILTERS = [
 
 export default function HistoryScreen() {
   const { hasPremium } = useSubscription();
+  const { isDark } = useTheme();
+  
+  // Get theme-appropriate colors
+  const colors = getColors(isDark);
   const [entries, setEntries] = useState<MoodEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -190,7 +195,7 @@ export default function HistoryScreen() {
     }
   };
 
-  const renderEntry = ({ item }: { item: MoodEntry }) => {
+  const EntryRow = memo(function EntryRow({ item }: { item: MoodEntry }) {
     const colors = getMoodColors(item.mood_value, (item as any).sentiment_data);
     
     return (
@@ -221,7 +226,11 @@ export default function HistoryScreen() {
         )}
       </View>
     );
-  };
+  });
+
+  const renderEntry = ({ item }: { item: MoodEntry }) => (
+    <EntryRow item={item} />
+  );
 
   const renderGroup = ({ item }: { item: GroupedEntries }) => (
     <View style={styles.groupContainer}>
@@ -238,9 +247,7 @@ export default function HistoryScreen() {
         )}
       </View>
       {item.data.map((entry, index) => (
-        <View key={entry.id || index}>
-          {renderEntry({ item: entry })}
-        </View>
+        <EntryRow key={entry.id || index} item={entry} />
       ))}
     </View>
   );
@@ -256,6 +263,9 @@ export default function HistoryScreen() {
       </Text>
     </View>
   );
+
+  // Create theme-aware styles
+  const styles = createStyles(colors);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -358,15 +368,21 @@ export default function HistoryScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmptyState}
+        initialNumToRender={4}
+        maxToRenderPerBatch={3}
+        windowSize={8}
+        removeClippedSubviews={true}
+        updateCellsBatchingPeriod={16}
+        getItemLayout={undefined}
       />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: typeof Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: colors.background.primary,
   },
   titleContainer: {
     alignItems: 'center',
@@ -376,14 +392,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Typography.fontSize['4xl'],
     fontWeight: Typography.fontWeight.bold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.xs,
     textAlign: 'center',
     letterSpacing: Typography.letterSpacing.tight,
   },
   subtitle: {
     fontSize: Typography.fontSize.base,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
@@ -395,18 +411,18 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.base,
     paddingVertical: Spacing.md,
     fontSize: Typography.fontSize.base,
     borderWidth: 1,
     borderColor: Colors.neutral[200],
-    color: Colors.text.primary,
+    color: colors.text.primary,
     ...Shadows.card,
   },
   filterButton: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
@@ -500,7 +516,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   entryCard: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
@@ -527,12 +543,12 @@ const styles = StyleSheet.create({
   moodLabel: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.xs,
   },
   entryTime: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
   },
   exportButton: {
     backgroundColor: '#F3F4F6',
@@ -609,7 +625,7 @@ const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
   },
   flowContainer: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginHorizontal: Layout.screenPadding,
@@ -619,7 +635,7 @@ const styles = StyleSheet.create({
   flowTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.md,
     textAlign: 'center',
   },

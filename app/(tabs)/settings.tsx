@@ -14,9 +14,11 @@ import {
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
 import { getAllMoodEntries, getMoodEntryCount, generateSampleData, clearAllMoodData } from './database/database';
+import { generateEnhancedTestData } from '../../utils/newTestData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout, getColors } from '../../constants/Design';
 import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { conversionService } from '../../services/conversionService';
 import { subscriptionService } from '../../services/subscriptionService';
 import { notificationService, NotificationSettings } from '../../services/notificationService';
@@ -78,7 +80,8 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState(false);
   const [notificationTime, setNotificationTime] = useState('19:00');
   const [skipWeekends, setSkipWeekends] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [usePatternNotifications, setUsePatternNotifications] = useState(true);
+  const [patternNotificationFrequency, setPatternNotificationFrequency] = useState<'always' | 'weekly' | 'monthly'>('weekly');
   const [insightsEnabled, setInsightsEnabled] = useState(true);
   const [weeklyNotifications, setWeeklyNotifications] = useState(false);
   const [weeklyDay, setWeeklyDay] = useState('Sunday');
@@ -88,6 +91,10 @@ export default function SettingsScreen() {
   const [testingBypassEnabled, setTestingBypassEnabled] = useState(false);
   
   const { hasPremium, isLoading, restorePurchases, refreshPremiumStatus } = useSubscription();
+  const { isDark, setThemeMode } = useTheme();
+  
+  // Get theme-appropriate colors
+  const colors = getColors(isDark);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -99,19 +106,19 @@ export default function SettingsScreen() {
       setNotifications(notificationSettings.enabled);
       setNotificationTime(notificationSettings.time);
       setSkipWeekends(notificationSettings.skipWeekends);
+      setUsePatternNotifications(notificationSettings.usePatternNotifications);
+      setPatternNotificationFrequency(notificationSettings.patternNotificationFrequency);
       
       // Load testing bypass status
       const bypassEnabled = subscriptionService.isTestingBypassEnabled();
       setTestingBypassEnabled(bypassEnabled);
       
       // Load other preferences from AsyncStorage
-      const darkModePref = await AsyncStorage.getItem('dark_mode');
       const insightsPref = await AsyncStorage.getItem('insights_enabled');
       const weeklyNotificationsPref = await AsyncStorage.getItem('weekly_notifications_enabled');
       const weeklyDayPref = await AsyncStorage.getItem('weekly_day');
       const weeklySummariesPref = await AsyncStorage.getItem('weekly_summaries_enabled');
       
-      setDarkMode(darkModePref === 'true');
       setInsightsEnabled(insightsPref !== 'false'); // Default to true
       setWeeklyNotifications(weeklyNotificationsPref === 'true');
       setWeeklyDay(weeklyDayPref || 'Sunday');
@@ -283,6 +290,93 @@ export default function SettingsScreen() {
     setSkipWeekends(value);
   };
 
+  const togglePatternNotifications = async (value: boolean) => {
+    await notificationService.updateSettings({ usePatternNotifications: value });
+    setUsePatternNotifications(value);
+    
+    if (value) {
+      Alert.alert(
+        'Smart Notifications Enabled',
+        'Your notifications will now include personalized insights based on your mood patterns. These appear alongside regular gentle reminders.',
+        [{ text: 'Got it' }]
+      );
+    } else {
+      Alert.alert(
+        'Smart Notifications Disabled',
+        'You\'ll receive only gentle reminder messages. Pattern-based notifications are turned off.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const showPatternFrequencyOptions = () => {
+    Alert.alert(
+      'Smart Notification Frequency',
+      'How often would you like to receive pattern-based notifications?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Always', onPress: () => updatePatternFrequency('always') },
+        { text: 'Weekly (Recommended)', onPress: () => updatePatternFrequency('weekly') },
+        { text: 'Monthly', onPress: () => updatePatternFrequency('monthly') }
+      ]
+    );
+  };
+
+  const updatePatternFrequency = async (frequency: 'always' | 'weekly' | 'monthly') => {
+    await notificationService.updateSettings({ patternNotificationFrequency: frequency });
+    setPatternNotificationFrequency(frequency);
+    
+    const descriptions = {
+      always: 'Every notification will use your personal patterns when possible',
+      weekly: 'Pattern notifications mixed with gentle reminders (recommended balance)',
+      monthly: 'Occasional pattern insights with mostly gentle reminders'
+    };
+    
+    Alert.alert(
+      'Frequency Updated',
+      descriptions[frequency],
+      [{ text: 'Perfect' }]
+    );
+  };
+
+  const testPatternNotification = async () => {
+    try {
+      const testResult = await notificationService.testPatternNotification();
+      const notificationTypeText = testResult.type === 'pattern' ? 'Smart Pattern' : 'Gentle Reminder';
+      
+      Alert.alert(
+        `${notificationTypeText} Preview`,
+        `"${testResult.message}"`,
+        [
+          { text: 'Close' },
+          { 
+            text: 'View Stats', 
+            onPress: showPatternNotificationStats 
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Unable to generate notification preview. Please try again.');
+    }
+  };
+
+  const showPatternNotificationStats = async () => {
+    try {
+      const stats = await notificationService.getPatternNotificationStats();
+      Alert.alert(
+        'Pattern Notification Stats',
+        `Total notifications sent: ${stats.totalCount}
+Pattern notifications enabled: ${stats.patternNotificationsEnabled ? 'Yes' : 'No'}
+Frequency: ${stats.frequency}
+        
+These smart notifications use your actual mood data to provide personalized reminders based on your patterns.`,
+        [{ text: 'Close' }]
+      );
+    } catch (error) {
+      Alert.alert('Error', 'Unable to load notification stats.');
+    }
+  };
+
   const pauseNotifications = () => {
     Alert.alert(
       'Pause Notifications',
@@ -369,14 +463,9 @@ export default function SettingsScreen() {
     }
   };
 
-  const toggleDarkMode = (value: boolean) => {
-    setDarkMode(value);
-    savePreference('dark_mode', value);
-    Alert.alert(
-      'Theme Setting',
-      'Theme changes will take effect when you restart the app.',
-      [{ text: 'OK' }]
-    );
+  const toggleDarkMode = async () => {
+    const newMode = isDark ? 'light' : 'dark';
+    await setThemeMode(newMode);
   };
 
   const toggleInsights = (value: boolean) => {
@@ -688,6 +777,30 @@ Thank you!`;
             onPress: () => toggleSkipWeekends(!skipWeekends)
           },
           {
+            title: 'Smart Pattern Notifications',
+            subtitle: entryCount >= 3 
+              ? 'Use your mood patterns to personalize reminders'
+              : 'Available after tracking 3+ entries',
+            type: 'toggle' as const,
+            value: usePatternNotifications,
+            onPress: () => togglePatternNotifications(!usePatternNotifications),
+            disabled: entryCount < 3
+          },
+          ...(usePatternNotifications && entryCount >= 3 ? [
+            {
+              title: 'Pattern Frequency',
+              subtitle: `${patternNotificationFrequency === 'always' ? 'Always use patterns' : patternNotificationFrequency === 'weekly' ? 'Weekly mix (recommended)' : 'Monthly occasional'}`,
+              type: 'navigation' as const,
+              onPress: showPatternFrequencyOptions
+            },
+            {
+              title: 'Test Smart Notification',
+              subtitle: 'Preview what notification you\'d receive now',
+              type: 'navigation' as const,
+              onPress: testPatternNotification
+            }
+          ] : []),
+          {
             title: 'Pause Reminders',
             subtitle: 'Temporarily stop notifications for a break',
             type: 'navigation' as const,
@@ -703,8 +816,8 @@ Thank you!`;
           title: 'Dark Mode',
           subtitle: 'Easier on the eyes in low light',
           type: 'toggle',
-          value: darkMode,
-          onPress: () => toggleDarkMode(!darkMode)
+          value: isDark,
+          onPress: toggleDarkMode
         },
         {
           title: 'Generate Insights',
@@ -874,6 +987,35 @@ Your emotional journey belongs to you.`,
           }
         },
         {
+          title: '🚀 Enhanced Pattern Test Data',
+          subtitle: 'Generate data specifically designed for Advanced Pattern Detection',
+          type: 'action' as const,
+          onPress: async () => {
+            Alert.alert(
+              '🚀 Enhanced Pattern Test Data',
+              'This will generate 27 entries with strong patterns like:\n\n• Exercise → mood improvement\n• "Can\'t sleep" → bad next day\n• Thursday productivity boost\n• Sunday anxiety patterns\n• Social isolation effects\n\nPerfect for testing the new Enhanced Pattern Detector!',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Generate',
+                  onPress: async () => {
+                    try {
+                      await generateEnhancedTestData();
+                      Alert.alert(
+                        'Enhanced Test Data Generated! 🧠',
+                        '27 entries with strong patterns created. Go to Insights to see the new Enhanced Pattern Detection in action!',
+                        [{ text: 'View Insights', onPress: () => router.push('/(tabs)/insights') }]
+                      );
+                    } catch (error) {
+                      Alert.alert('Error', 'Failed to generate enhanced test data. Check console for details.');
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        },
+        {
           title: 'Clear All Mood Data',
           subtitle: 'Remove all mood entries and reset database',
           type: 'action' as const,
@@ -951,6 +1093,9 @@ Your emotional journey belongs to you.`,
     </View>
   );
 
+  // Create theme-aware styles
+  const styles = createStyles(colors);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -976,10 +1121,10 @@ Your emotional journey belongs to you.`,
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: typeof Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: colors.background.primary,
   },
   scrollContent: {
     paddingBottom: Spacing['8xl'],
@@ -992,14 +1137,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: Typography.fontSize['4xl'],
     fontWeight: Typography.fontWeight.bold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.xs,
     textAlign: 'center',
     letterSpacing: Typography.letterSpacing.tight,
   },
   subtitle: {
     fontSize: Typography.fontSize.base,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     textAlign: 'center',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
@@ -1009,12 +1154,12 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.md,
     paddingHorizontal: Layout.screenPadding,
   },
   sectionContent: {
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.lg,
     marginHorizontal: Layout.screenPadding,
     overflow: 'hidden',
@@ -1041,12 +1186,12 @@ const styles = StyleSheet.create({
   settingsItemTitle: {
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.medium as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.xs,
   },
   settingsItemSubtitle: {
     fontSize: Typography.fontSize.sm,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     lineHeight: Typography.lineHeight.snug * Typography.fontSize.sm,
   },
   destructiveText: {

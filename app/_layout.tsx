@@ -6,14 +6,31 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { initializeDatabase } from './(tabs)/database/database';
 import { SubscriptionProvider } from '../contexts/SubscriptionContext';
+import { ThemeProvider as CustomThemeProvider, useTheme } from '../contexts/ThemeContext';
 import { notificationService } from '../services/notificationService';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
+function AppContent() {
+  const { isDark } = useTheme();
+  
+  return (
+    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+      <SubscriptionProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+          <Stack.Screen name="paywall" options={{ headerShown: false }} />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </SubscriptionProvider>
+      <StatusBar style={isDark ? 'light' : 'auto'} />
+    </ThemeProvider>
+  );
+}
+
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
@@ -34,17 +51,9 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <SubscriptionProvider>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-            <Stack.Screen name="paywall" options={{ headerShown: false }} />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-        </SubscriptionProvider>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <CustomThemeProvider>
+        <AppContent />
+      </CustomThemeProvider>
     </ErrorBoundary>
   );
 }

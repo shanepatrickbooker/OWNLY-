@@ -8,7 +8,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "bundle:ios": "npx expo export:embed --platform ios --dev false",
+    "bundle:analyze": "npx expo export:embed --platform ios --dev false --sourcemap && npx @expo/metro-runtime --sourcemap"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -54,7 +56,9 @@
     "@types/sentiment": "^5.0.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "flipper": "^0.212.0",
+    "react-native-flipper": "^0.190.0"
   },
   "private": true
 }

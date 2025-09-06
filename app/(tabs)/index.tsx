@@ -1,11 +1,15 @@
 import { router, useFocusEffect } from 'expo-router';
 import React, { useState, useCallback, useEffect } from 'react';
-import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert, TextInput } from 'react-native';
+import { Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert, TextInput, InteractionManager } from 'react-native';
 import { saveMoodEntry, getAllMoodEntries, getMoodEntryCount } from './database/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { calculateEngagement } from '../../utils/engagementRecognition';
 import { conversionService } from '../../services/conversionService';
-import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
+import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout, getColors } from '../../constants/Design';
+import { useSubscription } from '../../contexts/SubscriptionContext';
+import { useTheme } from '../../contexts/ThemeContext';
+import { generateInsights } from '../../utils/sentimentAnalysis';
+import { EnhancedPatternDetector } from '../../utils/enhancedPatternDetector';
 import HeaderLogo from '../../components/HeaderLogo';
 
 // Mood options matching your mockup
@@ -23,9 +27,16 @@ const MOODS = [
 ];
 
 export default function HomeScreen() {
+  const { hasPremium } = useSubscription();
+  const { isDark } = useTheme();
+  
+  // Get theme-appropriate colors
+  const colors = getColors(isDark);
   const [selectedMoodIndex, setSelectedMoodIndex] = useState<number | null>(null);
   const [savedEntries, setSavedEntries] = useState<any[]>([]);
   const [engagementData, setEngagementData] = useState<any>(null);
+  const [patternTeaser, setPatternTeaser] = useState<any>(null);
+  const [patternContext, setPatternContext] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
@@ -59,10 +70,34 @@ export default function HomeScreen() {
       const entriesWithTimestamps = entries.filter(entry => entry.created_at);
       const engagement = calculateEngagement(entriesWithTimestamps as any);
       setEngagementData(engagement);
+      
+      // Generate pattern teaser if we have enough entries (deferred for performance)
+      if (entries.length >= 5) {
+        InteractionManager.runAfterInteractions(() => {
+          const insights = generateInsights(entries, hasPremium);
+          const patternDetector = new EnhancedPatternDetector(entries);
+          const patterns = patternDetector.getPersonalPatterns();
+          
+          if (insights.length > 0 || patterns.length > 0) {
+            const patternCount = hasPremium ? patterns.length : Math.min(patterns.length, 1);
+            const topInsight = insights[0] || {
+              category: 'pattern',
+              insight: patterns[0]?.pattern || 'Pattern detected in your data',
+              confidence: patterns[0]?.confidence || 0.8
+            };
+            
+            setPatternTeaser({
+              count: patternCount,
+              insight: topInsight,
+              hasMore: patterns.length > (hasPremium ? 0 : 1)
+            });
+          }
+        });
+      }
     } catch (error) {
       if (__DEV__) console.error('Error loading saved entries:', error);
     }
-  }, []);
+  }, [hasPremium]);
 
   useFocusEffect(useCallback(() => {
     loadSavedEntries();
@@ -71,11 +106,92 @@ export default function HomeScreen() {
     setJustSaved(false);
     setShowReflection(false);
     setReflection('');
+    setPatternContext(null);
   }, [loadSavedEntries]));
 
-  const handleMoodSelect = (index: number, moodLabel: string, moodValue: number) => {
+  const generatePatternContext = async (moodLabel: string, moodValue: number): Promise<string | null> => {
+    if (savedEntries.length < 5) return null;
+    
+    return new Promise((resolve) => {
+      // Defer pattern processing to avoid blocking UI interactions
+      InteractionManager.runAfterInteractions(() => {
+        try {
+          const patternDetector = new EnhancedPatternDetector(savedEntries);
+          const patterns = patternDetector.getPersonalPatterns();
+          const currentHour = new Date().getHours();
+          
+          // Check for mood-specific patterns
+          const similarMoodEntries = savedEntries.filter(entry => 
+            entry.mood_label === moodLabel || Math.abs(entry.mood_value - moodValue) <= 0.5
+          );
+          
+          // Time-based context
+          let timeContext = '';
+          if (currentHour >= 17 && currentHour <= 21) {
+            const workStressEntries = savedEntries.filter(entry => 
+              entry.reflection?.toLowerCase().includes('work') || 
+              entry.reflection?.toLowerCase().includes('job') ||
+              entry.reflection?.toLowerCase().includes('meeting')
+            );
+            if (workStressEntries.length >= 2) {
+              timeContext = 'Work stress detected in your patterns';
+            }
+          } else if (currentHour >= 6 && currentHour <= 10) {
+            timeContext = 'Morning check-ins often set the tone for your day';
+          }
+          
+          // Activity-based suggestions from patterns
+          const improvementPatterns = patterns.filter(p => p.type === 'improvement');
+          if (improvementPatterns.length > 0) {
+            const topPattern = improvementPatterns[0];
+            if (moodValue <= 2.5) {
+              // For difficult moods, suggest what has helped before
+              resolve(`💡 ${topPattern.actionableInsight}`);
+              return;
+            }
+          }
+          
+          // Trigger patterns for difficult moods
+          if (moodValue <= 2.5) {
+            const triggerPatterns = patterns.filter(p => p.type === 'trigger');
+            if (triggerPatterns.length > 0 && similarMoodEntries.length >= 2) {
+              resolve(`🔍 You've felt ${moodLabel.toLowerCase()} ${similarMoodEntries.length} times before - patterns can help`);
+              return;
+            }
+          }
+          
+          // Positive reinforcement for good moods
+          if (moodValue >= 4) {
+            if (similarMoodEntries.length >= 3) {
+              resolve(`✨ Great choice! You've felt ${moodLabel.toLowerCase()} ${similarMoodEntries.length} times - what's working?`);
+              return;
+            }
+          }
+          
+          // Default time context if no specific patterns
+          if (timeContext) {
+            resolve(`⏰ ${timeContext}`);
+            return;
+          }
+          
+          resolve(null);
+        } catch (error) {
+          console.error('Error generating pattern context:', error);
+          resolve(null);
+        }
+      });
+    });
+  };
+
+  const handleMoodSelect = async (index: number, moodLabel: string, moodValue: number) => {
     setSelectedMoodIndex(index);
     setJustSaved(true); // Show the options UI immediately
+    
+    // Generate contextual pattern hint
+    if (savedEntries.length >= 5) {
+      const context = await generatePatternContext(moodLabel, moodValue);
+      setPatternContext(context);
+    }
   };
 
   const handleTellUsMore = () => {
@@ -113,6 +229,7 @@ export default function HomeScreen() {
             setJustSaved(false);
             setShowReflection(false);
             setReflection('');
+            setPatternContext(null);
           }
         }]
       );
@@ -131,6 +248,9 @@ export default function HomeScreen() {
   };
 
 
+  // Create theme-aware styles
+  const styles = createStyles(colors);
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -144,6 +264,38 @@ export default function HomeScreen() {
               {engagementData.message}
             </Text>
           </View>
+        )}
+        
+        {/* Pattern Teaser */}
+        {patternTeaser && (
+          <TouchableOpacity 
+            style={styles.patternTeaserContainer} 
+            onPress={() => router.push('/insights')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.patternTeaserContent}>
+              <View style={styles.patternTeaserHeader}>
+                <Text style={styles.patternTeaserIcon}>🧠</Text>
+                <View style={styles.patternTeaserTextContainer}>
+                  <Text style={styles.patternTeaserTitle}>
+                    OWNLY found {patternTeaser.count} pattern{patternTeaser.count !== 1 ? 's' : ''}
+                  </Text>
+                  <Text style={styles.patternTeaserSubtitle} numberOfLines={2}>
+                    {patternTeaser.insight.insight}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.patternTeaserFooter}>
+                <Text style={styles.patternTeaserCta}>View Insights</Text>
+                <Text style={styles.patternTeaserArrow}>›</Text>
+              </View>
+            </View>
+            {!hasPremium && patternTeaser.hasMore && (
+              <View style={styles.premiumBadge}>
+                <Text style={styles.premiumBadgeText}>Premium</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         )}
         
         {/* Main Question */}
@@ -177,6 +329,13 @@ export default function HomeScreen() {
             <Text style={styles.successMessage}>
               {MOODS[selectedMoodIndex].emoji} Feeling {MOODS[selectedMoodIndex].label.toLowerCase()}
             </Text>
+            
+            {/* Pattern Context */}
+            {patternContext && (
+              <View style={styles.patternContextContainer}>
+                <Text style={styles.patternContextText}>{patternContext}</Text>
+              </View>
+            )}
             
             {!showReflection ? (
               <View style={styles.optionsContainer}>
@@ -275,10 +434,10 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: typeof Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background.primary,
+    backgroundColor: colors.background.primary,
   },
   scrollContent: {
     paddingHorizontal: Layout.screenPadding,
@@ -306,7 +465,7 @@ const styles = StyleSheet.create({
     fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'left',
     marginBottom: Spacing.sm,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     letterSpacing: Typography.letterSpacing.tight,
   },
   stepInstruction: {
@@ -314,7 +473,7 @@ const styles = StyleSheet.create({
     fontWeight: Typography.fontWeight.medium as any,
     textAlign: 'left',
     marginBottom: Spacing['3xl'],
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
   moodGrid: {
@@ -331,7 +490,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     margin: Spacing.xs,
     borderWidth: 2,
     borderColor: Colors.neutral[100],
@@ -372,9 +531,25 @@ const styles = StyleSheet.create({
   successMessage: {
     fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.lg,
     textAlign: 'center',
+  },
+  patternContextContainer: {
+    backgroundColor: Colors.primary[100],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.lg,
+    marginHorizontal: Spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary[400],
+  },
+  patternContextText: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.primary[700],
+    fontWeight: Typography.fontWeight.medium as any,
+    textAlign: 'center',
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
   optionsContainer: {
     flexDirection: 'row',
@@ -409,11 +584,11 @@ const styles = StyleSheet.create({
   },
   reflectionInput: {
     width: '100%',
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     fontSize: Typography.fontSize.base,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     minHeight: 100,
     textAlignVertical: 'top',
     borderWidth: 1,
@@ -434,7 +609,7 @@ const styles = StyleSheet.create({
     ...Shadows.button,
   },
   skipButtonText: {
-    color: Colors.text.primary,
+    color: colors.text.primary,
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
@@ -462,7 +637,7 @@ const styles = StyleSheet.create({
     ...Shadows.button,
   },
   doneButtonText: {
-    color: Colors.text.primary,
+    color: colors.text.primary,
     fontSize: Typography.fontSize.base,
     fontWeight: Typography.fontWeight.semibold as any,
     textAlign: 'center',
@@ -480,7 +655,7 @@ const styles = StyleSheet.create({
   entriesContainer: {
     marginTop: Spacing['3xl'],
     padding: Layout.cardPadding,
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.lg,
     marginHorizontal: Spacing.sm,
     ...Shadows.card,
@@ -488,7 +663,7 @@ const styles = StyleSheet.create({
   entriesTitle: {
     fontSize: Typography.fontSize.lg,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.md,
   },
   entryItem: {
@@ -505,14 +680,14 @@ const styles = StyleSheet.create({
   },
   entryTimestamp: {
     fontSize: Typography.fontSize.xs,
-    color: Colors.text.tertiary,
+    color: colors.text.tertiary,
   },
   emptyStateContainer: {
     alignItems: 'center',
     marginTop: Spacing['3xl'],
     paddingVertical: Spacing['2xl'],
     paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.background.secondary,
+    backgroundColor: colors.background.secondary,
     borderRadius: BorderRadius.xl,
     marginHorizontal: Spacing.sm,
   },
@@ -523,7 +698,7 @@ const styles = StyleSheet.create({
   emptyStateTitle: {
     fontSize: Typography.fontSize.xl,
     fontWeight: Typography.fontWeight.semibold as any,
-    color: Colors.text.primary,
+    color: colors.text.primary,
     marginBottom: Spacing.md,
     textAlign: 'center',
   },
@@ -533,5 +708,76 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
     maxWidth: 280,
+  },
+  patternTeaserContainer: {
+    backgroundColor: Colors.primary[50],
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginHorizontal: Spacing.base,
+    marginBottom: Spacing.xl,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary[400],
+    ...Shadows.card,
+    position: 'relative',
+  },
+  patternTeaserContent: {
+    flex: 1,
+  },
+  patternTeaserHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  patternTeaserIcon: {
+    fontSize: 24,
+    marginRight: Spacing.md,
+    marginTop: 2,
+  },
+  patternTeaserTextContainer: {
+    flex: 1,
+  },
+  patternTeaserTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.primary[700],
+    marginBottom: Spacing.xs,
+    lineHeight: Typography.lineHeight.tight * Typography.fontSize.lg,
+  },
+  patternTeaserSubtitle: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.primary[600],
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+  },
+  patternTeaserFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.sm,
+  },
+  patternTeaserCta: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.medium as any,
+    color: Colors.primary[600],
+  },
+  patternTeaserArrow: {
+    fontSize: Typography.fontSize.xl,
+    color: Colors.primary[500],
+    fontWeight: Typography.fontWeight.bold as any,
+  },
+  premiumBadge: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    backgroundColor: Colors.secondary[500],
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs / 2,
+    borderRadius: BorderRadius.sm,
+  },
+  premiumBadgeText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: 'white',
+    textTransform: 'uppercase',
+    letterSpacing: Typography.letterSpacing.wide,
   },
 });

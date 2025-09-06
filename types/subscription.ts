@@ -68,7 +68,9 @@ export const FREE_TIER_LIMITS = {
 
 // Premium features list
 export const PREMIUM_FEATURES = [
-  'Full insights analysis',
+  'Enhanced Pattern Detection with AI predictions',
+  'Full insights analysis (3-5 per session)',
+  'Visual success rates for your strategies',
   'Unlimited history access', 
   'Advanced weekly pattern analysis',
   'Priority customer support',
@@ -81,12 +83,13 @@ export const CONVERSION_TRIGGERS: ConversionTrigger[] = [
   {
     id: 'mood_entries_10',
     condition: 'after_10_entries',
-    title: 'Unlock Deeper Insights',
-    description: 'You\'ve been consistently tracking your mood. Discover advanced patterns and deeper analysis with Premium.',
+    title: 'Unlock Enhanced Pattern Detection',
+    description: 'You\'ve built a foundation of mood data. Discover advanced patterns with AI-powered predictions.',
     features: [
-      'Get 3-5 detailed insights per session instead of 1-2',
-      'See emotional patterns you might be missing',
-      'Understand your triggers and growth areas'
+      'See what triggers your best and worst days ✅⬜',
+      'Get mood predictions with confidence scores',
+      'Discover hidden cycles and emotional patterns',
+      'Personalized actionable recommendations'
     ],
     triggerCount: 10
   },
@@ -97,6 +100,7 @@ export const CONVERSION_TRIGGERS: ConversionTrigger[] = [
     description: 'Access your full emotional history and track long-term patterns with Premium.',
     features: [
       'View all your mood entries, not just the last 30 days',
+      'Enhanced Pattern Detection with full data analysis',
       'Track seasonal patterns and long-term trends',
       'Export your complete data anytime'
     ]
@@ -104,11 +108,12 @@ export const CONVERSION_TRIGGERS: ConversionTrigger[] = [
   {
     id: 'week_of_use',
     condition: 'after_1_week',
-    title: 'Discover Advanced Patterns',
-    description: 'After a week of mindful tracking, you\'re ready for deeper insights.',
+    title: 'Discover Enhanced Patterns',
+    description: 'After consistent tracking, unlock AI-powered pattern recognition.',
     features: [
-      'Advanced weekly pattern analysis',
-      'Personalized recommendations',
+      'Advanced Markov chain mood predictions',
+      'Visual success rates for your coping strategies ✅⬜⬜',
+      'Personalized insight recommendations',
       'Priority support from our team'
     ]
   }

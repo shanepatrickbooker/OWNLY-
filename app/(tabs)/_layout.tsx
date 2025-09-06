@@ -6,7 +6,6 @@ import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors as DesignColors } from '../../constants/Design';
 
 export default function TabLayout() {
@@ -20,6 +19,8 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
+        lazy: true, // Enable lazy loading for better performance
+        freezeOnBlur: true, // Freeze inactive screens to save memory
         tabBarStyle: Platform.select({
           ios: {
             position: 'absolute',

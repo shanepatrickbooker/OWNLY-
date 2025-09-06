@@ -21,7 +21,7 @@ export default function ExpectationsScreen() {
       secondaryButtonText="Back"
       onPrimaryPress={handleNext}
       onSecondaryPress={handleBack}
-      progress={{ current: 5, total: 7 }}
+      progress={{ current: 6, total: 8 }}
       showLogo={false}
     >
       <View style={styles.contentContainer}>

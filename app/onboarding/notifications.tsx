@@ -60,7 +60,7 @@ export default function NotificationsScreen() {
       secondaryButtonText="Back"
       onPrimaryPress={handleComplete}
       onSecondaryPress={handleBack}
-      progress={{ current: 7, total: 7 }}
+      progress={{ current: 8, total: 8 }}
       showLogo={false}
     >
       <View style={styles.contentContainer}>

@@ -10,18 +10,22 @@ import {
   Alert,
   Dimensions
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { getAllMoodEntries } from './database/database';
 import { generateWeeklySummary, getAvailableWeeks, WeeklySummary } from '../../utils/weeklyAnalysis';
+import { EnhancedPatternDetector } from '../../utils/enhancedPatternDetector';
+import { useSubscription } from '../../contexts/SubscriptionContext';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout } from '../../constants/Design';
 import HeaderLogo from '../../components/HeaderLogo';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 export default function WeeklyScreen() {
+  const { hasPremium } = useSubscription();
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
+  const [weeklyPatterns, setWeeklyPatterns] = useState<any[]>([]);
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
@@ -47,6 +51,91 @@ export default function WeeklyScreen() {
     const selectedWeekStart = availableWeeks[selectedWeekIndex];
     return generateWeeklySummary(entries, selectedWeekStart);
   }, [entries, availableWeeks, selectedWeekIndex]);
+
+  // Generate weekly patterns using Enhanced Pattern Detection
+  const generateWeeklyPatterns = useCallback(() => {
+    if (entries.length < 3 || !weeklySummary) return [];
+    
+    try {
+      // Filter entries for the selected week
+      const weekEnd = new Date(weeklySummary.weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      
+      const weekEntries = entries.filter(entry => {
+        const entryDate = new Date(entry.created_at || entry.timestamp);
+        return entryDate >= weeklySummary.weekStart && entryDate < weekEnd;
+      });
+      
+      if (weekEntries.length < 2) return [];
+      
+      // Use Enhanced Pattern Detector on all entries for context
+      const patternDetector = new EnhancedPatternDetector(entries);
+      const allPatterns = patternDetector.getPersonalPatterns();
+      
+      // Filter patterns relevant to this week
+      const weeklyRelevantPatterns = allPatterns.filter(pattern => {
+        // Include patterns that show up in this week's data
+        if (pattern.type === 'cycle') {
+          // Day-based cycles are always relevant
+          return true;
+        }
+        
+        if (pattern.type === 'improvement' || pattern.type === 'trigger') {
+          // Check if pattern keywords appear in this week's reflections
+          const weekReflections = weekEntries
+            .map(e => e.reflection?.toLowerCase() || '')
+            .join(' ');
+          
+          return pattern.examples.some(example => 
+            weekReflections.includes(example.toLowerCase().substring(0, 20))
+          );
+        }
+        
+        return pattern.confidence >= 0.7; // High confidence patterns
+      });
+      
+      // Generate week-specific insights
+      const weekSpecificInsights = [];
+      
+      // Weekly mood trend
+      if (weekEntries.length >= 3) {
+        const firstHalf = weekEntries.slice(0, Math.ceil(weekEntries.length / 2));
+        const secondHalf = weekEntries.slice(Math.floor(weekEntries.length / 2));
+        
+        const firstHalfAvg = firstHalf.reduce((sum, e) => sum + e.mood_value, 0) / firstHalf.length;
+        const secondHalfAvg = secondHalf.reduce((sum, e) => sum + e.mood_value, 0) / secondHalf.length;
+        
+        if (secondHalfAvg > firstHalfAvg + 0.5) {
+          weekSpecificInsights.push({
+            type: 'trend',
+            pattern: 'Your mood improved throughout the week',
+            insight: 'You showed resilience and growth during this week',
+            confidence: 0.8
+          });
+        } else if (firstHalfAvg > secondHalfAvg + 0.5) {
+          weekSpecificInsights.push({
+            type: 'trend',
+            pattern: 'You started strong but faced challenges later',
+            insight: 'Consider what changed mid-week and how to maintain early momentum',
+            confidence: 0.8
+          });
+        }
+      }
+      
+      // Combine patterns for display
+      return [...weeklyRelevantPatterns.slice(0, 2), ...weekSpecificInsights];
+      
+    } catch (error) {
+      console.error('Error generating weekly patterns:', error);
+      return [];
+    }
+  }, [entries, weeklySummary]);
+
+  // Update patterns when selection changes
+  useFocusEffect(useCallback(() => {
+    const patterns = generateWeeklyPatterns();
+    setWeeklyPatterns(patterns);
+  }, [generateWeeklyPatterns]));
 
   const renderMoodDistributionChart = (summary: WeeklySummary) => {
     if (summary.totalEntries === 0) return null;
@@ -158,6 +247,80 @@ export default function WeeklyScreen() {
     );
   };
 
+  const renderEnhancedPatterns = () => {
+    if (weeklyPatterns.length === 0) return null;
+    
+    const displayPatterns = hasPremium ? weeklyPatterns : weeklyPatterns.slice(0, 1);
+    const hasMorePatterns = weeklyPatterns.length > 1 && !hasPremium;
+
+    return (
+      <View style={styles.enhancedPatternsContainer}>
+        <View style={styles.enhancedPatternHeader}>
+          <Text style={styles.sectionTitle}>🧠 Enhanced Pattern Detection</Text>
+          {!hasPremium && (
+            <TouchableOpacity 
+              style={styles.premiumBadge}
+              onPress={() => router.push('/paywall?trigger=weekly_patterns')}
+            >
+              <Text style={styles.premiumBadgeText}>Premium</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        <Text style={styles.enhancedPatternSubtitle}>
+          AI-powered insights from your emotional patterns
+        </Text>
+
+        {displayPatterns.map((pattern, index) => (
+          <View key={index} style={styles.enhancedPatternCard}>
+            <View style={styles.patternTypeContainer}>
+              <Text style={styles.patternTypeEmoji}>
+                {pattern.type === 'improvement' ? '✨' : 
+                 pattern.type === 'cycle' ? '🔄' :
+                 pattern.type === 'trend' ? '📈' :
+                 pattern.type === 'trigger' ? '🔍' : '💡'}
+              </Text>
+              <Text style={styles.patternTypeName}>
+                {pattern.type.toUpperCase()}
+              </Text>
+              {pattern.confidence && (
+                <Text style={styles.patternConfidence}>
+                  {Math.round(pattern.confidence * 100)}% confidence
+                </Text>
+              )}
+            </View>
+            
+            <Text style={styles.patternText}>{pattern.pattern}</Text>
+            <Text style={styles.patternInsight}>
+              {pattern.insight || pattern.actionableInsight}
+            </Text>
+            
+            {pattern.frequency && (
+              <Text style={styles.patternFrequency}>
+                Based on {pattern.frequency} observations
+              </Text>
+            )}
+          </View>
+        ))}
+
+        {hasMorePatterns && (
+          <TouchableOpacity 
+            style={styles.upgradePatternCard}
+            onPress={() => router.push('/paywall?trigger=weekly_patterns')}
+          >
+            <Text style={styles.upgradePatternTitle}>
+              🔓 {weeklyPatterns.length - 1} more pattern{weeklyPatterns.length > 2 ? 's' : ''} detected
+            </Text>
+            <Text style={styles.upgradePatternText}>
+              Unlock all weekly pattern insights with Premium
+            </Text>
+            <Text style={styles.upgradePatternCta}>Tap to upgrade →</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
   const renderWeekSelector = () => {
     if (availableWeeks.length <= 1) return null;
 
@@ -247,6 +410,7 @@ export default function WeeklyScreen() {
         {renderMoodDistributionChart(weeklySummary)}
         {renderReflectionInsights(weeklySummary)}
         {renderTemporalPatterns(weeklySummary)}
+        {renderEnhancedPatterns()}
 
         {/* Disclaimer */}
         <View style={styles.disclaimerContainer}>
@@ -507,5 +671,113 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
     opacity: 0.8,
+  },
+  enhancedPatternsContainer: {
+    marginHorizontal: Layout.screenPadding,
+    marginBottom: Spacing.xl,
+  },
+  enhancedPatternHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  premiumBadge: {
+    backgroundColor: Colors.secondary[500],
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs / 2,
+    borderRadius: BorderRadius.sm,
+  },
+  premiumBadgeText: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: 'white',
+    textTransform: 'uppercase',
+  },
+  enhancedPatternSubtitle: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.tertiary,
+    marginBottom: Spacing.lg,
+    fontStyle: 'italic',
+  },
+  enhancedPatternCard: {
+    backgroundColor: Colors.primary[50],
+    borderRadius: BorderRadius.lg,
+    padding: Layout.cardPadding,
+    marginBottom: Spacing.md,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary[400],
+    ...Shadows.card,
+  },
+  patternTypeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+  },
+  patternTypeEmoji: {
+    fontSize: 20,
+    marginRight: Spacing.sm,
+  },
+  patternTypeName: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.primary[600],
+    backgroundColor: Colors.primary[100],
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs / 2,
+    borderRadius: BorderRadius.sm,
+    marginRight: Spacing.md,
+  },
+  patternConfidence: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.text.tertiary,
+    fontWeight: Typography.fontWeight.medium as any,
+  },
+  patternText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.primary[700],
+    marginBottom: Spacing.sm,
+    lineHeight: Typography.lineHeight.tight * Typography.fontSize.base,
+  },
+  patternInsight: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.primary[600],
+    marginBottom: Spacing.sm,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+  },
+  patternFrequency: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.tertiary,
+    fontStyle: 'italic',
+  },
+  upgradePatternCard: {
+    backgroundColor: Colors.secondary[50],
+    borderRadius: BorderRadius.lg,
+    padding: Layout.cardPadding,
+    borderWidth: 2,
+    borderColor: Colors.secondary[200],
+    borderStyle: 'dashed',
+    alignItems: 'center',
+  },
+  upgradePatternTitle: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.secondary[700],
+    marginBottom: Spacing.xs,
+    textAlign: 'center',
+  },
+  upgradePatternText: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.secondary[600],
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
+  },
+  upgradePatternCta: {
+    fontSize: Typography.fontSize.sm,
+    fontWeight: Typography.fontWeight.medium as any,
+    color: Colors.secondary[600],
+    textAlign: 'center',
   },
 });

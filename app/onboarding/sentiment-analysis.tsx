@@ -6,7 +6,7 @@ import { Colors, Typography, Spacing, BorderRadius, Layout } from '../../constan
 
 export default function SentimentAnalysisScreen() {
   const handleNext = () => {
-    router.push('/onboarding/expectations');
+    router.push('/onboarding/enhanced-patterns');
   };
 
   const handleBack = () => {

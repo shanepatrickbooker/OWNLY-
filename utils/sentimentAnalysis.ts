@@ -1,4 +1,17 @@
 import Sentiment from 'sentiment';
+import { EnhancedPatternDetector } from './enhancedPatternDetector';
+
+// Helper function for upgrade hints
+const getUpgradeHint = (): string => {
+  const hints = [
+    '(Premium: See success rates)',
+    '(Premium: Get predictions)', 
+    '(Premium: View detailed analysis)',
+    '(Premium: See confidence levels)',
+    '(Premium: Track patterns over time)'
+  ];
+  return hints[Math.floor(Math.random() * hints.length)];
+};
 
 const sentiment = new Sentiment();
 
@@ -18,6 +31,14 @@ export interface MoodInsight {
   supportingData?: any;
   priority: 'high' | 'medium' | 'low'; // For sorting by relevance
   actionableSuggestion?: string; // Optional follow-up suggestion
+  
+  // Enhanced visual elements
+  confidence?: number; // 0-1 confidence score
+  successRate?: number; // 0-1 success rate for suggestions
+  trendDirection?: 'improving' | 'declining' | 'stable';
+  patternCategory?: 'prediction' | 'discovery' | 'trend' | 'cycle';
+  timeContext?: string; // "Based on last 30 days"
+  frequency?: number; // How many times pattern was observed
 }
 
 export const analyzeSentiment = (text: string): SentimentResult => {
@@ -48,7 +69,8 @@ export const generateInsights = (entries: Array<{
   reflection?: string;
   sentiment_data?: SentimentResult;
   created_at: string;
-}>): MoodInsight[] => {
+  timestamp?: string;
+}>, isPremium: boolean = false): MoodInsight[] => {
   const insights: MoodInsight[] = [];
   
   if (entries.length < 3) {
@@ -59,6 +81,119 @@ export const generateInsights = (entries: Array<{
   
   if (entriesWithReflections.length < 2) {
     return insights; // Need reflections to analyze
+  }
+
+  // Initialize Enhanced Pattern Detector for personalized insights
+  try {
+    const patternDetector = new EnhancedPatternDetector(entries.map(e => ({
+      mood_value: e.mood_value,
+      mood_label: e.mood_label,
+      reflection: e.reflection,
+      timestamp: e.timestamp || e.created_at,
+      created_at: e.created_at,
+      sentiment_data: e.sentiment_data
+    })));
+
+    // Get personal patterns with actionable insights
+    const personalPatterns = patternDetector.getPersonalPatterns();
+    
+    // Convert personal patterns to MoodInsight format with tiered features
+    personalPatterns.slice(0, isPremium ? personalPatterns.length : 1).forEach((pattern, index) => {
+      const isFreeTierInsight = !isPremium && index === 0;
+      
+      insights.push({
+        type: pattern.type === 'improvement' ? 'coping_recognition' : 
+              pattern.type === 'trigger' ? 'trigger_identification' :
+              pattern.type === 'cycle' ? 'day_of_week_patterns' : 'contextual_patterns',
+        observation: isFreeTierInsight ? 
+          `${pattern.pattern} ${getUpgradeHint()}` : 
+          pattern.pattern,
+        priority: pattern.confidence > 0.7 ? 'high' : 'medium',
+        actionableSuggestion: isPremium ? pattern.actionableInsight : 
+          isFreeTierInsight ? `${pattern.actionableInsight.split('.')[0]}... [Premium: See detailed suggestions]` : 
+          pattern.actionableInsight,
+        supportingData: { 
+          confidence: pattern.confidence, 
+          frequency: pattern.frequency,
+          examples: isPremium ? pattern.examples : [],
+          isPremiumFeature: !isPremium && index === 0
+        },
+        // Enhanced visual data (tiered) - only show success rate with 3+ observations
+        confidence: isPremium ? pattern.confidence : undefined,
+        successRate: isPremium && pattern.type === 'improvement' && pattern.frequency >= 3 ? pattern.confidence : undefined,
+        trendDirection: pattern.type === 'improvement' ? 'improving' : 
+                      pattern.type === 'decline' ? 'declining' : 'stable',
+        patternCategory: pattern.type === 'improvement' ? 'discovery' :
+                        pattern.type === 'cycle' ? 'cycle' :
+                        pattern.type === 'trigger' ? 'prediction' : 'trend',
+        timeContext: isPremium ? `Based on ${pattern.frequency} observations` : undefined,
+        frequency: pattern.frequency
+      });
+    });
+
+    // Add premium teaser insights for remaining patterns
+    if (!isPremium && personalPatterns.length > 1) {
+      const remainingCount = personalPatterns.length - 1;
+      insights.push({
+        type: 'progress_recognition',
+        observation: `🔒 ${remainingCount} more advanced pattern${remainingCount > 1 ? 's' : ''} detected`,
+        priority: 'high',
+        actionableSuggestion: `Unlock Premium to see personalized predictions, success rates, and detailed behavioral insights`,
+        patternCategory: 'discovery',
+        supportingData: { isPremiumTeaser: true, hiddenPatternCount: remainingCount }
+      });
+    }
+
+    // Get correlation insights
+    const correlations = patternDetector.getCorrelationInsights();
+    if (correlations.length > 0) {
+      insights.push({
+        type: 'contextual_patterns',
+        observation: correlations[0],
+        priority: 'medium',
+        supportingData: { correlationCount: correlations.length }
+      });
+    }
+
+    // Get mood prediction for current state (Premium only)
+    if (isPremium && entries.length > 0) {
+      const latestEntry = entries[0];
+      const prediction = patternDetector.predictNextMood(
+        latestEntry.mood_value, 
+        latestEntry.reflection
+      );
+      
+      if (prediction.confidence > 0.5 && prediction.suggestion) {
+        insights.push({
+          type: 'progress_recognition',
+          observation: `Based on your patterns: ${prediction.basedOn}`,
+          priority: 'high',
+          actionableSuggestion: prediction.suggestion,
+          supportingData: { 
+            predictedMood: prediction.predictedMood,
+            confidence: prediction.confidence 
+          },
+          // Enhanced prediction visuals
+          confidence: prediction.confidence,
+          patternCategory: 'prediction',
+          trendDirection: prediction.predictedMood > latestEntry.mood_value ? 'improving' : 
+                         prediction.predictedMood < latestEntry.mood_value ? 'declining' : 'stable',
+          timeContext: 'Predicted for next entry'
+        });
+      }
+    } else if (!isPremium && entries.length > 0) {
+      // Add prediction teaser for free users
+      insights.push({
+        type: 'progress_recognition',
+        observation: '🔒 Mood prediction available',
+        priority: 'high',
+        actionableSuggestion: 'Unlock Premium to get personalized mood predictions and preventive suggestions based on your unique patterns',
+        patternCategory: 'prediction',
+        supportingData: { isPredictionTeaser: true }
+      });
+    }
+  } catch (error) {
+    console.log('Enhanced pattern detection not available, using standard insights');
   }
 
   // 1. Nuanced emotions insight - compare mood ratings vs sentiment

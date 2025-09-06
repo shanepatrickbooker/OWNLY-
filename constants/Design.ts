@@ -96,6 +96,45 @@ export const Colors = {
   },
 };
 
+// Dark Mode Colors
+export const DarkColors = {
+  ...Colors,
+  
+  // Override backgrounds for dark mode
+  background: {
+    primary: '#0F0F0F',   // Main app background (very dark)
+    secondary: '#1A1A1A', // Card backgrounds (slightly lighter)
+    tertiary: '#262626',  // Subtle section backgrounds
+  },
+
+  // Override text colors for dark mode
+  text: {
+    primary: '#FFFFFF',   // Main headings (white)
+    secondary: '#E5E5E5', // Body text (light gray)
+    tertiary: '#A3A3A3',  // Subtle text (medium gray)
+    inverse: '#1C1917',   // Dark text on light backgrounds
+  },
+
+  // Override interactive states for dark mode
+  interactive: {
+    hover: 'rgba(139, 92, 246, 0.15)',     // Slightly more visible in dark
+    pressed: 'rgba(139, 92, 246, 0.25)',   // More visible pressed state
+    disabled: 'rgba(163, 163, 163, 0.3)',  // Lighter disabled state
+    focus: 'rgba(139, 92, 246, 0.4)',      // More visible focus
+  },
+
+  // Override shadow colors for dark mode
+  shadow: {
+    light: 'rgba(0, 0, 0, 0.2)',          // More visible shadows in dark
+    medium: 'rgba(0, 0, 0, 0.3)',         // Standard cards
+    heavy: 'rgba(0, 0, 0, 0.4)',          // Elevated elements
+    colored: 'rgba(139, 92, 246, 0.2)',   // Purple shadow
+  },
+};
+
+// Function to get colors based on theme
+export const getColors = (isDark: boolean) => isDark ? DarkColors : Colors;
+
 export const Typography = {
   // Font Families (using system fonts for better performance)
   fontFamily: {

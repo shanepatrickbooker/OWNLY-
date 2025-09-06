@@ -46,7 +46,7 @@ export default function BoundariesScreen() {
       secondaryButtonText="Back"
       onPrimaryPress={handleNext}
       onSecondaryPress={handleBack}
-      progress={{ current: 6, total: 7 }}
+      progress={{ current: 7, total: 8 }}
       showLogo={false}
     >
       <View style={styles.contentContainer}>

@@ -14,6 +14,9 @@ import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../../consta
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { SUBSCRIPTION_TIERS, CONVERSION_TRIGGERS } from '../../types/subscription';
 import { subscriptionService } from '../../services/subscriptionService';
+import { generateInsights } from '../../utils/sentimentAnalysis';
+import { EnhancedPatternDetector } from '../../utils/enhancedPatternDetector';
+import { getAllMoodEntries } from '../(tabs)/database/database';
 import HeaderLogo from '../../components/HeaderLogo';
 
 export default function PaywallScreen() {
@@ -21,6 +24,8 @@ export default function PaywallScreen() {
   const { purchaseSubscription, restorePurchases, isLoading } = useSubscription();
   const [selectedTier, setSelectedTier] = useState<string>('ownly_yearly');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [lockedPatterns, setLockedPatterns] = useState<any[]>([]);
+  const [totalPatterns, setTotalPatterns] = useState(0);
 
   // Find the trigger configuration
   const triggerConfig = CONVERSION_TRIGGERS.find(t => t.id === trigger) || {
@@ -38,7 +43,42 @@ export default function PaywallScreen() {
   useEffect(() => {
     // Mark that we've shown this paywall trigger
     subscriptionService.markPaywallShown(trigger);
+    loadUserPatterns();
   }, [trigger]);
+
+  const loadUserPatterns = async () => {
+    try {
+      const entries = await getAllMoodEntries();
+      if (entries.length >= 3) {
+        const patternDetector = new EnhancedPatternDetector(entries);
+        const patterns = patternDetector.getPersonalPatterns();
+        const insights = await generateInsights(entries, false); // Generate as free user
+        
+        setTotalPatterns(patterns.length + insights.length);
+        
+        // Create locked pattern previews (show what they're missing)
+        const lockedPreviews = [
+          ...patterns.slice(0, 3).map(p => ({
+            type: 'pattern',
+            title: p.pattern,
+            preview: p.actionableInsight,
+            confidence: p.confidence,
+            frequency: p.frequency
+          })),
+          ...insights.slice(0, 2).map(i => ({
+            type: 'insight',
+            title: i.category,
+            preview: i.insight,
+            confidence: i.confidence || 0.8
+          }))
+        ];
+        
+        setLockedPatterns(lockedPreviews.slice(0, 4)); // Show up to 4 locked patterns
+      }
+    } catch (error) {
+      console.error('Error loading user patterns:', error);
+    }
+  };
 
   const handlePurchase = async () => {
     try {
@@ -149,6 +189,48 @@ export default function PaywallScreen() {
               All analysis happens locally on your device. Your personal reflections never leave your phone.
             </Text>
           </View>
+
+          {/* Locked Patterns Preview */}
+          {lockedPatterns.length > 0 && (
+            <View style={styles.lockedPatternsSection}>
+              <Text style={styles.lockedPatternsTitle}>
+                🔓 You have {totalPatterns} pattern{totalPatterns !== 1 ? 's' : ''} waiting to be discovered
+              </Text>
+              <Text style={styles.lockedPatternsSubtitle}>
+                Here's a preview of what Premium will unlock from your data:
+              </Text>
+              
+              {lockedPatterns.map((pattern, index) => (
+                <View key={index} style={styles.lockedPatternItem}>
+                  <View style={styles.lockedPatternContent}>
+                    <View style={styles.lockedPatternHeader}>
+                      <Text style={styles.lockedPatternType}>
+                        {pattern.type === 'pattern' ? '🧠' : '💡'} {pattern.type.toUpperCase()}
+                      </Text>
+                      {pattern.confidence && (
+                        <Text style={styles.lockedPatternConfidence}>
+                          {Math.round(pattern.confidence * 100)}% confidence
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.lockedPatternTitle}>{pattern.title}</Text>
+                    <Text style={styles.lockedPatternPreview} numberOfLines={2}>
+                      {pattern.preview}
+                    </Text>
+                  </View>
+                  <View style={styles.lockIcon}>
+                    <Text style={styles.lockEmoji}>🔒</Text>
+                  </View>
+                </View>
+              ))}
+              
+              <View style={styles.upgradePrompt}>
+                <Text style={styles.upgradePromptText}>
+                  Unlock all {totalPatterns} personalized insights with Premium
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Feature List */}
           <View style={styles.featuresSection}>
@@ -464,5 +546,96 @@ const styles = StyleSheet.create({
     color: Colors.text.tertiary,
     textAlign: 'center',
     lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.xs,
+  },
+  lockedPatternsSection: {
+    backgroundColor: Colors.neutral[50],
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.xl,
+    borderWidth: 2,
+    borderColor: Colors.secondary[200],
+    borderStyle: 'dashed',
+  },
+  lockedPatternsTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.bold as any,
+    color: Colors.secondary[700],
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  lockedPatternsSubtitle: {
+    fontSize: Typography.fontSize.base,
+    color: Colors.text.secondary,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+  },
+  lockedPatternItem: {
+    backgroundColor: Colors.background.secondary,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    opacity: 0.8,
+  },
+  lockedPatternContent: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  lockedPatternHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  lockedPatternType: {
+    fontSize: Typography.fontSize.xs,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.secondary[600],
+    backgroundColor: Colors.secondary[100],
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs / 2,
+    borderRadius: BorderRadius.sm,
+  },
+  lockedPatternConfidence: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.text.tertiary,
+    fontWeight: Typography.fontWeight.medium as any,
+  },
+  lockedPatternTitle: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: Colors.text.primary,
+    marginBottom: Spacing.xs,
+    lineHeight: Typography.lineHeight.tight * Typography.fontSize.base,
+  },
+  lockedPatternPreview: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.text.secondary,
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.sm,
+  },
+  lockIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockEmoji: {
+    fontSize: 24,
+    opacity: 0.6,
+  },
+  upgradePrompt: {
+    backgroundColor: Colors.secondary[100],
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.sm,
+  },
+  upgradePromptText: {
+    fontSize: Typography.fontSize.base,
+    fontWeight: Typography.fontWeight.medium as any,
+    color: Colors.secondary[700],
+    textAlign: 'center',
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
   },
 });

@@ -133,7 +133,7 @@ export const getMoodEntriesForDate = async (date: Date): Promise<MoodEntry[]> =>
 // Generate diverse sample data to trigger all insights (for testing only)
 export const generateSampleData = async (): Promise<void> => {
   try {
-    if (__DEV__) console.log('🧪 Generating diverse sample data...');
+    if (__DEV__) console.log('🧪 Generating NEW diverse sample data for Enhanced Pattern Detector...');
     
     // Clear existing data first
     await AsyncStorage.setItem(MOOD_ENTRIES_KEY, JSON.stringify([]));
