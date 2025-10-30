@@ -75,5 +75,7 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSUserNotificationsUsageDescription</key>
+    <string>OWNLY uses notifications to send gentle daily reminders for mood check-ins at your chosen time.</string>
   </dict>
 </plist>
