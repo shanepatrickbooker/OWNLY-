@@ -175,6 +175,10 @@ export default function ReflectionScreen() {
                   selectedMood === mood.value && styles.moodOptionSelected
                 ]}
                 onPress={() => setSelectedMood(mood.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Select ${mood.label} mood`}
+                accessibilityHint={`Tap to select ${mood.label} mood with emoji ${mood.emoji}`}
+                accessibilityState={{ selected: selectedMood === mood.value }}
               >
                 <Text style={styles.moodEmoji}>{mood.emoji}</Text>
                 <Text style={[
@@ -223,6 +227,8 @@ export default function ReflectionScreen() {
             multiline
             textAlignVertical="top"
             maxLength={2000}
+            accessibilityLabel="Reflection text field"
+            accessibilityHint="Write about your feelings and thoughts, up to 2000 characters"
           />
           
           <Text style={styles.characterCount}>
@@ -230,13 +236,17 @@ export default function ReflectionScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[
             styles.submitButton,
             ((selectedMood === null && !isDeepReflection) || !reflection.trim() || isSubmitting) && styles.submitButtonDisabled
           ]}
           onPress={handleSubmit}
           disabled={(selectedMood === null && !isDeepReflection) || !reflection.trim() || isSubmitting}
+          accessibilityRole="button"
+          accessibilityLabel={isDeepReflection ? 'Save deep reflection' : 'Save reflection'}
+          accessibilityHint="Tap to save your mood and reflection"
+          accessibilityState={{ disabled: (selectedMood === null && !isDeepReflection) || !reflection.trim() || isSubmitting }}
         >
           <Text style={[
             styles.submitButtonText,

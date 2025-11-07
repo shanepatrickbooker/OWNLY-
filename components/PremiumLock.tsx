@@ -51,6 +51,10 @@ export default function PremiumLock({
                 style={styles.upgradeButton}
                 onPress={() => router.push(`/paywall?trigger=${trigger}`)}
                 disabled={isLoading}
+                accessibilityRole="button"
+                accessibilityLabel="Upgrade to premium"
+                accessibilityHint="Opens premium subscription options and pricing"
+                accessibilityState={{ disabled: isLoading }}
               >
                 <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
               </TouchableOpacity>
@@ -87,6 +91,10 @@ export default function PremiumLock({
           style={styles.upgradeButton}
           onPress={() => router.push(`/paywall?trigger=${trigger}`)}
           disabled={isLoading}
+          accessibilityRole="button"
+          accessibilityLabel="Upgrade to premium"
+          accessibilityHint="Opens premium subscription options and pricing"
+          accessibilityState={{ disabled: isLoading }}
         >
           <Text style={styles.upgradeButtonText}>
             {isLoading ? 'Loading...' : 'Upgrade to Premium'}
@@ -96,6 +104,9 @@ export default function PremiumLock({
         <TouchableOpacity
           style={styles.learnMoreButton}
           onPress={() => router.push(`/paywall?trigger=${trigger}`)}
+          accessibilityRole="button"
+          accessibilityLabel="Learn more about premium features"
+          accessibilityHint="View detailed information about premium subscription benefits"
         >
           <Text style={styles.learnMoreButtonText}>Learn more</Text>
         </TouchableOpacity>

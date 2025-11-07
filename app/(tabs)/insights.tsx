@@ -13,6 +13,8 @@ import {
 import { getAllMoodEntries } from './database/database';
 import { generateInsights, MoodInsight } from '../../utils/sentimentAnalysis';
 import { InteractionManager } from 'react-native';
+import { checkDataQuality, initializeInsightsEngine } from '../../utils/insightsGate';
+import { generateFallbackCards, type FallbackCard } from '../../utils/fallbackContent';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, Layout, getColors } from '../../constants/Design';
 import { useSubscription } from '../../contexts/SubscriptionContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -29,6 +31,8 @@ export default function InsightsScreen() {
   // Get theme-appropriate colors
   const colors = getColors(isDark);
   const [insights, setInsights] = useState<MoodInsight[]>([]);
+  const [fallbackCards, setFallbackCards] = useState<FallbackCard[]>([]);
+  const [showFallback, setShowFallback] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entryCount, setEntryCount] = useState(0);
@@ -39,42 +43,73 @@ export default function InsightsScreen() {
   const loadInsights = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
+      // Initialize insights engine (versioning)
+      await initializeInsightsEngine();
+
       const allEntries = await getAllMoodEntries();
       setEntries(allEntries);
       setEntryCount(allEntries.length);
-      
-      if (allEntries.length < 3) {
+
+      // Check data quality
+      const qualityCheck = checkDataQuality(allEntries.map(e => ({
+        mood_value: e.mood_value,
+        mood_label: e.mood_label,
+        reflection: e.reflection,
+        timestamp: e.timestamp || e.created_at,
+        created_at: e.created_at
+      })));
+
+      if (!qualityCheck.hasEnoughData) {
+        // Not enough data - show fallback content
+        if (__DEV__) console.log('📊 Using fallback content:', qualityCheck.reason);
+        setShowFallback(true);
         setInsights([]);
+        setFallbackCards(generateFallbackCards(allEntries as any));
         setLastUpdated(new Date());
         return;
       }
 
       const entriesWithTimestamps = allEntries.filter(entry => entry.created_at);
-      
+
       // Show loading state immediately, then run expensive calculations after interactions
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       // Add small delay to show loading state
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const generatedInsights = generateInsights(entriesWithTimestamps as any, hasPremium);
-      console.log(`🧠 Generated ${generatedInsights.length} insights:`, generatedInsights.map(i => i.type));
-      setInsights(generatedInsights);
-      setCurrentInsightIndex(0);
+
+      // Generate insights (now async with quality gates)
+      const generatedInsights = await generateInsights(entriesWithTimestamps as any, hasPremium);
+
+      if (generatedInsights.length === 0) {
+        // Insights were filtered out - show fallback
+        if (__DEV__) console.log('📊 No insights passed quality gates, using fallback');
+        setShowFallback(true);
+        setInsights([]);
+        setFallbackCards(generateFallbackCards(allEntries as any));
+      } else {
+        // We have quality insights!
+        if (__DEV__) console.log(`🧠 Generated ${generatedInsights.length} quality insights:`, generatedInsights.map(i => i.type));
+        setShowFallback(false);
+        setInsights(generatedInsights);
+        setFallbackCards([]);
+        setCurrentInsightIndex(0);
+      }
+
       setLastUpdated(new Date());
 
       // Track insights view for conversion triggers
       await conversionService.trackInsightsView();
     } catch (err) {
-      console.error('Error loading insights:', err);
+      if (__DEV__) console.error('Error loading insights:', err);
       setError('Unable to analyze your patterns right now. Please try again.');
       setInsights([]);
+      setFallbackCards([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [hasPremium]);
 
   useFocusEffect(useCallback(() => {
     loadInsights();
@@ -256,17 +291,40 @@ export default function InsightsScreen() {
                   {entryCount === 0 ? '🌱' : entryCount === 1 ? '🌿' : '✨'}
                 </Text>
                 <Text style={styles.emptyStateTitle}>
-                  {entryCount === 0 ? 'Ready to begin' : 
-                   entryCount === 1 ? 'Great start!' : 
+                  {entryCount === 0 ? 'Ready to begin' :
+                   entryCount === 1 ? 'Great start!' :
                    'So close!'}
                 </Text>
                 <Text style={styles.emptyStateText}>
-                  {entryCount === 0 ? 
+                  {entryCount === 0 ?
                     'Track your first mood to start building your emotional awareness journey. Each entry helps us understand your unique patterns.' :
                    entryCount === 1 ?
                     'You\'ve made your first entry! Add a few more mood check-ins to see your first personalized insight.' :
                     'Just one more entry and you\'ll discover your first pattern! Your insights will appear here automatically.'}
                 </Text>
+              </View>
+            ) : showFallback && fallbackCards.length > 0 ? (
+              <View style={styles.fallbackContainer}>
+                <View style={styles.fallbackHeader}>
+                  <Text style={styles.fallbackHeaderText}>
+                    Building your pattern insights...
+                  </Text>
+                  <Text style={styles.fallbackSubtext}>
+                    Here's what we can show you right now:
+                  </Text>
+                </View>
+                {fallbackCards.map((card, index) => (
+                  <View key={index} style={styles.fallbackCard}>
+                    {card.emoji && (
+                      <Text style={styles.fallbackEmoji}>{card.emoji}</Text>
+                    )}
+                    <Text style={styles.fallbackTitle}>{card.title}</Text>
+                    <Text style={styles.fallbackContent}>{card.content}</Text>
+                    {card.actionText && (
+                      <Text style={styles.fallbackAction}>{card.actionText}</Text>
+                    )}
+                  </View>
+                ))}
               </View>
             ) : insights.length === 0 ? (
               <View style={styles.emptyStateContainer}>
@@ -348,9 +406,12 @@ export default function InsightsScreen() {
                             {insights[currentInsightIndex].actionableSuggestion}
                           </Text>
                         ) : (
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.upgradePrompt}
                             onPress={() => router.push('/paywall')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Upgrade for personalized suggestions"
+                            accessibilityHint="Get actionable recommendations based on your patterns with premium"
                           >
                             <Text style={styles.upgradePromptText}>
                               🚀 Upgrade for personalized suggestions
@@ -361,11 +422,14 @@ export default function InsightsScreen() {
                     )}
                     
                     {/* Premium Teaser Cards */}
-                    {(insights[currentInsightIndex].supportingData?.isPremiumTeaser || 
+                    {(insights[currentInsightIndex].supportingData?.isPremiumTeaser ||
                       insights[currentInsightIndex].supportingData?.isPredictionTeaser) && (
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.premiumTeaserCard}
                         onPress={() => router.push('/paywall')}
+                        accessibilityRole="button"
+                        accessibilityLabel="Unlock premium insight"
+                        accessibilityHint="Upgrade to premium to see this detailed insight"
                       >
                         <Text style={styles.premiumTeaserText}>
                           {insights[currentInsightIndex].actionableSuggestion}
@@ -397,20 +461,26 @@ export default function InsightsScreen() {
                         styles.dot,
                         index === currentInsightIndex ? styles.activeDot : styles.inactiveDot
                       ]}
+                      accessibilityLabel={`Insight ${index + 1} of ${insights.length}`}
+                      accessibilityState={{ selected: index === currentInsightIndex }}
                     />
                   ))}
                 </View>
                 <View style={styles.navigationButtons}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.navButton, currentInsightIndex === 0 && styles.navButtonDisabled]}
                     onPress={() => setCurrentInsightIndex(Math.max(0, currentInsightIndex - 1))}
                     disabled={currentInsightIndex === 0}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous insight"
+                    accessibilityHint="Navigate to the previous insight"
+                    accessibilityState={{ disabled: currentInsightIndex === 0 }}
                   >
                     <Text style={[styles.navButtonText, currentInsightIndex === 0 && styles.navButtonTextDisabled]}>
                       Previous
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.navButton, currentInsightIndex === insights.length - 1 && styles.navButtonDisabled]}
                     onPress={() => {
                       const nextIndex = currentInsightIndex + 1;
@@ -422,9 +492,13 @@ export default function InsightsScreen() {
                       }
                     }}
                     disabled={currentInsightIndex === insights.length - 1}
+                    accessibilityRole="button"
+                    accessibilityLabel={!hasPremium && currentInsightIndex >= FREE_TIER_LIMITS.maxInsightsPerSession - 1 ? 'Unlock more insights' : 'Next insight'}
+                    accessibilityHint={!hasPremium && currentInsightIndex >= FREE_TIER_LIMITS.maxInsightsPerSession - 1 ? 'Upgrade to premium to see more insights' : 'Navigate to the next insight'}
+                    accessibilityState={{ disabled: currentInsightIndex === insights.length - 1 }}
                   >
                     <Text style={[styles.navButtonText, currentInsightIndex === insights.length - 1 && styles.navButtonTextDisabled]}>
-                      {!hasPremium && currentInsightIndex >= FREE_TIER_LIMITS.maxInsightsPerSession - 1 ? 
+                      {!hasPremium && currentInsightIndex >= FREE_TIER_LIMITS.maxInsightsPerSession - 1 ?
                         'Unlock More' : 'Next insight'}
                     </Text>
                   </TouchableOpacity>
@@ -843,6 +917,65 @@ const createStyles = (colors: typeof Colors) => StyleSheet.create({
   visualizationSubtext: {
     fontSize: Typography.fontSize.sm,
     color: colors.text.tertiary,
+    textAlign: 'center',
+    marginTop: Spacing.md,
+    fontStyle: 'italic',
+  },
+  fallbackContainer: {
+    paddingVertical: Spacing.xl,
+    gap: Spacing.lg,
+  },
+  fallbackHeader: {
+    alignItems: 'center',
+    marginBottom: Spacing.md,
+    paddingHorizontal: Layout.screenPadding,
+  },
+  fallbackHeaderText: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: Spacing.xs,
+  },
+  fallbackSubtext: {
+    fontSize: Typography.fontSize.sm,
+    color: colors.text.tertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  fallbackCard: {
+    backgroundColor: colors.background.secondary,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    marginHorizontal: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.neutral[200],
+    alignItems: 'center',
+    ...Shadows.card,
+  },
+  fallbackEmoji: {
+    fontSize: 40,
+    marginBottom: Spacing.md,
+    textShadowColor: 'rgba(0, 0, 0, 0.1)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  fallbackTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: Typography.fontWeight.semibold as any,
+    color: colors.text.primary,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
+  fallbackContent: {
+    fontSize: Typography.fontSize.base,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: Typography.lineHeight.relaxed * Typography.fontSize.base,
+  },
+  fallbackAction: {
+    fontSize: Typography.fontSize.sm,
+    color: Colors.primary[600],
     textAlign: 'center',
     marginTop: Spacing.md,
     fontStyle: 'italic',

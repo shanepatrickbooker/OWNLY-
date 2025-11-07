@@ -80,7 +80,7 @@ export default function HistoryScreen() {
       });
       setEntries(sortedEntries);
     } catch (error) {
-      console.error('Error loading entries:', error);
+      if (__DEV__) console.error('Error loading entries:', error);
       Alert.alert('Error', 'Unable to load your history. Please try again.');
     } finally {
       setLoading(false);
@@ -190,7 +190,7 @@ export default function HistoryScreen() {
         title: 'Mood History Export'
       });
     } catch (error) {
-      console.error('Error sharing entries:', error);
+      if (__DEV__) console.error('Error sharing entries:', error);
       Alert.alert('Error', 'Unable to export entries. Please try again.');
     }
   };
@@ -214,9 +214,12 @@ export default function HistoryScreen() {
               <Text style={styles.entryTime}>{formatDateTime(item.created_at || item.timestamp)}</Text>
             </View>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.exportButton}
             onPress={() => exportEntries([item])}
+            accessibilityRole="button"
+            accessibilityLabel="Export this entry"
+            accessibilityHint="Share or save this mood entry"
           >
             <Text style={styles.exportButtonText}>Export</Text>
           </TouchableOpacity>
@@ -238,9 +241,12 @@ export default function HistoryScreen() {
         <Text style={styles.groupTitle}>{item.title}</Text>
         <Text style={styles.groupCount}>({item.data.length} entries)</Text>
         {item.data.length > 1 && (
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.exportGroupButton}
             onPress={() => exportEntries(item.data)}
+            accessibilityRole="button"
+            accessibilityLabel={`Export all ${item.data.length} entries from ${item.title}`}
+            accessibilityHint="Share or save all entries from this time period"
           >
             <Text style={styles.exportGroupButtonText}>Export All</Text>
           </TouchableOpacity>
@@ -267,8 +273,8 @@ export default function HistoryScreen() {
   // Create theme-aware styles
   const styles = createStyles(colors);
 
-  return (
-    <SafeAreaView style={styles.container}>
+  const renderListHeader = () => (
+    <>
       {/* Header */}
       <HeaderLogo />
       <View style={styles.titleContainer}>
@@ -280,9 +286,12 @@ export default function HistoryScreen() {
 
       {/* Premium Banner for Free Users */}
       {!hasPremium && entries.length > 0 && (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.premiumBanner}
           onPress={() => router.push('/paywall?trigger=history_access')}
+          accessibilityRole="button"
+          accessibilityLabel="Upgrade to see complete history"
+          accessibilityHint="Currently showing last 30 days. Upgrade to premium for unlimited history access"
         >
           <Text style={styles.bannerIcon}>🔓</Text>
           <View style={styles.bannerContent}>
@@ -299,12 +308,12 @@ export default function HistoryScreen() {
       {entries.length > 1 && (
         <View style={styles.flowContainer}>
           <Text style={styles.flowTitle}>Recent Emotional Flow</Text>
-          <EmotionalFlow 
-            entries={filteredEntries} 
-            width={320} 
-            height={120} 
-            days={hasPremium ? 30 : 14} 
-            showTrend={true} 
+          <EmotionalFlow
+            entries={filteredEntries}
+            width={320}
+            height={120}
+            days={hasPremium ? 30 : 14}
+            showTrend={true}
           />
         </View>
       )}
@@ -317,10 +326,16 @@ export default function HistoryScreen() {
           value={searchText}
           onChangeText={setSearchText}
           clearButtonMode="while-editing"
+          accessibilityLabel="Search mood reflections"
+          accessibilityHint="Type to filter your entries by mood or reflection text"
         />
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.filterButton, showFilters && styles.filterButtonActive]}
           onPress={() => setShowFilters(!showFilters)}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle filters"
+          accessibilityHint="Show or hide mood filter options"
+          accessibilityState={{ expanded: showFilters }}
         >
           <Text style={styles.filterButtonText}>Filters</Text>
         </TouchableOpacity>
@@ -338,6 +353,10 @@ export default function HistoryScreen() {
                   selectedMoodFilter === filter.value && styles.moodFilterButtonActive
                 ]}
                 onPress={() => setSelectedMoodFilter(filter.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Filter by ${filter.label} moods`}
+                accessibilityHint={filter.value === 'all' ? 'Show all mood entries' : `Show only ${filter.label} mood entries`}
+                accessibilityState={{ selected: selectedMoodFilter === filter.value }}
               >
                 <Text style={[
                   styles.moodFilterText,
@@ -349,21 +368,29 @@ export default function HistoryScreen() {
             ))}
           </ScrollView>
           {filteredEntries.length > 0 && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.exportAllButton}
               onPress={() => exportEntries(filteredEntries)}
+              accessibilityRole="button"
+              accessibilityLabel={`Export all ${filteredEntries.length} filtered entries`}
+              accessibilityHint="Share or save your filtered mood entries"
             >
               <Text style={styles.exportAllButtonText}>Export All ({filteredEntries.length})</Text>
             </TouchableOpacity>
           )}
         </View>
       )}
+    </>
+  );
 
+  return (
+    <SafeAreaView style={styles.container}>
       {/* Entries List */}
       <FlatList
         data={groupedEntries}
         keyExtractor={(item) => item.title}
         renderItem={renderGroup}
+        ListHeaderComponent={renderListHeader}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={loadEntries} />}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}

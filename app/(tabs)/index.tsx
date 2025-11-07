@@ -176,7 +176,7 @@ export default function HomeScreen() {
           
           resolve(null);
         } catch (error) {
-          console.error('Error generating pattern context:', error);
+          if (__DEV__) console.error('Error generating pattern context:', error);
           resolve(null);
         }
       });
@@ -268,10 +268,13 @@ export default function HomeScreen() {
         
         {/* Pattern Teaser */}
         {patternTeaser && (
-          <TouchableOpacity 
-            style={styles.patternTeaserContainer} 
+          <TouchableOpacity
+            style={styles.patternTeaserContainer}
             onPress={() => router.push('/insights')}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`View ${patternTeaser.count} pattern insight${patternTeaser.count !== 1 ? 's' : ''}`}
+            accessibilityHint="Tap to see detailed pattern analysis and emotional insights"
           >
             <View style={styles.patternTeaserContent}>
               <View style={styles.patternTeaserHeader}>
