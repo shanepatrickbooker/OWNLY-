@@ -41,7 +41,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           setThemeModeState('system');
         }
       } catch (error) {
-        console.error('Failed to load theme preference:', error);
+        if (__DEV__) console.error('Failed to load theme preference:', error);
         setThemeModeState('system');
       } finally {
         setIsLoaded(true);
@@ -60,7 +60,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         await AsyncStorage.setItem('dark_mode', mode === 'dark' ? 'true' : 'false');
       }
     } catch (error) {
-      console.error('Failed to save theme preference:', error);
+      if (__DEV__) console.error('Failed to save theme preference:', error);
+      // Theme state is already updated locally, so app continues to function
+      // even if storage fails
     }
   };
 

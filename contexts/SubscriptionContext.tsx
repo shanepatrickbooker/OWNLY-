@@ -37,7 +37,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       await subscriptionService.initialize();
       await refreshSubscriptionStatus();
     } catch (error) {
-      console.error('Failed to initialize subscriptions:', error);
+      if (__DEV__) console.error('Failed to initialize subscriptions:', error);
     } finally {
       setIsLoading(false);
     }
@@ -49,16 +49,16 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       const premiumAccess = await subscriptionService.hasPremiumAccess();
       setSubscriptionStatus(status);
       setHasPremium(premiumAccess);
-      console.log('Subscription status updated:', status, 'Premium access:', premiumAccess);
+      if (__DEV__) console.log('Subscription status updated:', status, 'Premium access:', premiumAccess);
     } catch (error) {
-      console.error('Failed to refresh subscription status:', error);
+      if (__DEV__) console.error('Failed to refresh subscription status:', error);
       // Still update premium access even if subscription status fails
       try {
         const premiumAccess = await subscriptionService.hasPremiumAccess();
         setHasPremium(premiumAccess);
-        console.log('Premium access updated despite subscription status error:', premiumAccess);
+        if (__DEV__) console.log('Premium access updated despite subscription status error:', premiumAccess);
       } catch (premiumError) {
-        console.error('Failed to get premium access:', premiumError);
+        if (__DEV__) console.error('Failed to get premium access:', premiumError);
       }
     }
   };
@@ -67,9 +67,9 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
     try {
       const premiumAccess = await subscriptionService.hasPremiumAccess();
       setHasPremium(premiumAccess);
-      console.log('Premium access updated:', premiumAccess);
+      if (__DEV__) console.log('Premium access updated:', premiumAccess);
     } catch (error) {
-      console.error('Failed to refresh premium status:', error);
+      if (__DEV__) console.error('Failed to refresh premium status:', error);
     }
   };
 
@@ -91,7 +91,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       
       return result;
     } catch (error) {
-      console.error('Purchase failed:', error);
+      if (__DEV__) console.error('Purchase failed:', error);
       return { success: false, error };
     } finally {
       setIsLoading(false);
@@ -109,7 +109,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
       
       return result;
     } catch (error) {
-      console.error('Restore failed:', error);
+      if (__DEV__) console.error('Restore failed:', error);
       return { success: false, error };
     } finally {
       setIsLoading(false);

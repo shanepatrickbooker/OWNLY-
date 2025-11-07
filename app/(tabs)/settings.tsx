@@ -13,6 +13,7 @@ import {
   Platform
 } from 'react-native';
 import { useFocusEffect, router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { getAllMoodEntries, getMoodEntryCount, generateSampleData, clearAllMoodData } from './database/database';
 import { generateEnhancedTestData } from '../../utils/newTestData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -124,7 +125,7 @@ export default function SettingsScreen() {
       setWeeklyDay(weeklyDayPref || 'Sunday');
       setWeeklySummariesEnabled(weeklySummariesPref !== 'false'); // Default to true
     } catch (error) {
-      console.error('Error loading settings:', error);
+      if (__DEV__) console.error('Error loading settings:', error);
     }
   }, []);
 
@@ -136,8 +137,21 @@ export default function SettingsScreen() {
     try {
       await AsyncStorage.setItem(key, value.toString());
     } catch (error) {
-      console.error(`Error saving ${key}:`, error);
+      if (__DEV__) console.error(`Error saving ${key}:`, error);
     }
+  };
+
+  // Sanitize CSV field to prevent injection attacks
+  const sanitizeCSVField = (field: string): string => {
+    if (!field) return '';
+
+    // Prevent formula injection by prefixing dangerous characters with a single quote
+    if (field.match(/^[=+\-@\t\r]/)) {
+      field = "'" + field;
+    }
+
+    // Escape double quotes
+    return field.replace(/"/g, '""');
   };
 
   const exportAllData = async () => {
@@ -155,16 +169,20 @@ export default function SettingsScreen() {
         const date = new Date(entry.created_at || entry.timestamp);
         const dateStr = date.toLocaleDateString();
         const timeStr = date.toLocaleTimeString();
-        const reflection = (entry.reflection || '').replace(/"/g, '""'); // Escape quotes
-        
+
+        // Sanitize all text fields to prevent CSV injection
+        const reflection = sanitizeCSVField(entry.reflection || '');
+        const moodLabel = sanitizeCSVField(entry.mood_label);
+
         // Add weekly context
         const { start: weekStart } = getWeekRange(date);
         const weekLabel = getWeekLabel(weekStart);
         const weekStartStr = weekStart.toLocaleDateString();
-        
-        return `"${dateStr}","${timeStr}","${entry.mood_label}",${entry.mood_value},"${reflection}","${weekStartStr}","${weekLabel}"`;
+        const weekLabelSanitized = sanitizeCSVField(weekLabel);
+
+        return `"${dateStr}","${timeStr}","${moodLabel}",${entry.mood_value},"${reflection}","${weekStartStr}","${weekLabelSanitized}"`;
       }).join('\n');
-      
+
       const csvContent = csvHeader + csvRows;
 
       await Share.share({
@@ -172,7 +190,7 @@ export default function SettingsScreen() {
         title: `OWNLY Complete Data Export (${entries.length} entries with weekly context)`
       });
     } catch (error) {
-      console.error('Error exporting data:', error);
+      if (__DEV__) console.error('Error exporting data:', error);
       Alert.alert('Export Error', 'Unable to export your data. Please try again.');
     }
   };
@@ -213,34 +231,56 @@ export default function SettingsScreen() {
       setEntryCount(0);
       Alert.alert('Data Cleared', 'All your mood data has been deleted.');
     } catch (error) {
-      console.error('Error clearing data:', error);
+      if (__DEV__) console.error('Error clearing data:', error);
       Alert.alert('Error', 'Unable to clear your data. Please try again.');
     }
   };
 
   const toggleNotifications = async (value: boolean) => {
     if (value) {
-      // Request permissions when enabling notifications
-      const hasPermission = await notificationService.requestPermissions();
-      if (!hasPermission) {
-        Alert.alert(
-          'Permission Needed',
-          'To send gentle reminders, we need your permission to show notifications. You can enable this in your device settings.',
-          [{ text: 'OK' }]
-        );
-        return; // Don't enable notifications if permission denied
-      }
-    }
-    
-    await notificationService.updateSettings({ enabled: value });
-    setNotifications(value);
-    
-    if (value) {
+      // Show pre-prompt dialog first (iOS best practice)
       Alert.alert(
-        'Gentle Reminders Enabled',
-        'You\'ll receive a daily reminder at 7 PM. You can customize the time below.',
-        [{ text: 'Got it' }]
+        'Enable Gentle Reminders?',
+        'OWNLY can send you a daily notification to check in on your emotional wellness.\n\n• Completely optional\n• Customizable time\n• Pattern-based personalization available\n• No promotional messages\n\nWould you like to enable reminders?',
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+            onPress: () => {
+              // User declined, don't request permission
+            }
+          },
+          {
+            text: 'Enable Reminders',
+            onPress: async () => {
+              // User agreed, now request system permission
+              const hasPermission = await notificationService.requestPermissions();
+              if (!hasPermission) {
+                Alert.alert(
+                  'Permission Needed',
+                  'To send gentle reminders, we need your permission to show notifications. You can enable this in your device settings.',
+                  [{ text: 'OK' }]
+                );
+                return; // Don't enable notifications if permission denied
+              }
+
+              // Permission granted!
+              await notificationService.updateSettings({ enabled: true });
+              setNotifications(true);
+
+              Alert.alert(
+                'Gentle Reminders Enabled',
+                'You\'ll receive a daily reminder at 7 PM. You can customize the time below.',
+                [{ text: 'Got it' }]
+              );
+            }
+          }
+        ]
       );
+    } else {
+      // Disabling notifications
+      await notificationService.updateSettings({ enabled: false });
+      setNotifications(false);
     }
   };
 
@@ -401,9 +441,12 @@ These smart notifications use your actual mood data to provide personalized remi
   };
 
   const handleVersionTap = () => {
+    // Only allow developer settings in development builds
+    if (!__DEV__) return;
+
     const newCount = versionTapCount + 1;
     setVersionTapCount(newCount);
-    
+
     if (newCount === 7) {
       setShowDeveloperSettings(true);
       Alert.alert(
@@ -608,7 +651,7 @@ Weekly summaries are tools for awareness, not scorecards for happiness.`,
               // Navigate to onboarding
               router.push('/onboarding/welcome');
             } catch (error) {
-              console.error('Error starting onboarding replay:', error);
+              if (__DEV__) console.error('Error starting onboarding replay:', error);
               Alert.alert('Error', 'Unable to start onboarding. Please try again.');
             }
           }
@@ -667,7 +710,7 @@ Thank you!`;
         );
       }
     } catch (error) {
-      console.error('Error restoring purchases:', error);
+      if (__DEV__) console.error('Error restoring purchases:', error);
       Alert.alert(
         'Restore Failed',
         'Unable to restore purchases. Please try again later.',
@@ -698,6 +741,11 @@ Thank you!`;
     {
       title: 'Data Management',
       items: [
+        {
+          title: '⚠️ Data Storage Notice',
+          subtitle: 'All your mood data is stored locally on this device only. Deleting the OWNLY app will permanently erase all your entries and reflections. Export your data before uninstalling if you want to keep a backup.',
+          type: 'info'
+        },
         {
           title: 'Total Entries',
           subtitle: `${entryCount} mood reflection${entryCount !== 1 ? 's' : ''} recorded`,
@@ -882,14 +930,19 @@ Thank you!`;
       title: 'Safety & Privacy',
       items: [
         {
+          title: '⚠️ Not Medical Advice',
+          subtitle: 'OWNLY is designed for personal reflection and self-awareness. It is NOT a substitute for professional mental health care and cannot diagnose or treat any conditions. If you\'re experiencing persistent mental health concerns, please consult a qualified healthcare provider.',
+          type: 'info'
+        },
+        {
           title: 'Crisis Resources',
           subtitle: 'Immediate support when you need it most',
           type: 'navigation',
           onPress: showCrisisResources
         },
         {
-          title: 'Clinical Disclaimer',
-          subtitle: 'Important limitations of this app',
+          title: 'Clinical Disclaimer (Full)',
+          subtitle: 'Tap to read complete limitations',
           type: 'navigation',
           onPress: () => Alert.alert(
             'Clinical Disclaimer',
@@ -908,19 +961,13 @@ If you're experiencing persistent mental health concerns, please consult a quali
           title: 'Privacy Policy',
           subtitle: 'How we protect your personal data',
           type: 'navigation',
-          onPress: () => Alert.alert(
-            'Privacy Policy',
-            `Your privacy is our priority:
-
-• All mood data is stored locally on your device
-• No data is sent to external servers
-• No analytics or tracking are performed
-• You have complete control over your information
-• Deleting the app removes all your data
-
-Your emotional journey belongs to you.`,
-            [{ text: 'Thank you' }]
-          )
+          onPress: () => WebBrowser.openBrowserAsync(process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || 'https://example.com/privacy')
+        },
+        {
+          title: 'Terms of Use',
+          subtitle: 'App terms and conditions',
+          type: 'navigation',
+          onPress: () => WebBrowser.openBrowserAsync(process.env.EXPO_PUBLIC_TERMS_URL || 'https://example.com/terms')
         }
       ]
     },

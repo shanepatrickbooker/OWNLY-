@@ -7,7 +7,8 @@ class SubscriptionService {
   private isInitialized = false;
   private customerInfo: CustomerInfo | null = null;
   private testingBypassEnabled = false;
-  
+  private initializationError: Error | null = null;
+
   private readonly TESTING_BYPASS_KEY = 'testing_bypass_enabled';
 
   // Initialize RevenueCat
@@ -15,9 +16,13 @@ class SubscriptionService {
     try {
       if (this.isInitialized) return;
 
-      // Check for testing bypass first
-      const bypassEnabled = await AsyncStorage.getItem(this.TESTING_BYPASS_KEY);
-      this.testingBypassEnabled = bypassEnabled === 'true';
+      // Check for testing bypass first (only in development)
+      if (__DEV__) {
+        const bypassEnabled = await AsyncStorage.getItem(this.TESTING_BYPASS_KEY);
+        this.testingBypassEnabled = bypassEnabled === 'true';
+      } else {
+        this.testingBypassEnabled = false;
+      }
       
       if (this.testingBypassEnabled) {
         if (__DEV__) console.log('🧪 Testing bypass enabled - Premium features unlocked');
@@ -37,17 +42,21 @@ class SubscriptionService {
       }
 
       await Purchases.configure({ apiKey });
-      
+
       // Set debug mode for development
       if (__DEV__) {
         await Purchases.setLogLevel('debug');
       }
 
       this.isInitialized = true;
+      this.initializationError = null;
       if (__DEV__) console.log('RevenueCat initialized successfully');
     } catch (error) {
       if (__DEV__) console.error('Failed to initialize RevenueCat:', error);
-      // Mark as initialized anyway to prevent infinite retry loops
+      // Store error for later checks
+      this.initializationError = error as Error;
+      // Still mark as initialized to prevent infinite retry loops
+      // but operations will check for initialization error
       this.isInitialized = true;
     }
   }
@@ -134,18 +143,26 @@ class SubscriptionService {
   async purchasePackage(packageToPurchase: PurchasesPackage): Promise<{ success: boolean, customerInfo?: CustomerInfo, error?: any }> {
     try {
       await this.ensureInitialized();
-      
+
+      // Check if purchase system is available
+      if (this.initializationError) {
+        return {
+          success: false,
+          error: 'Purchase system unavailable. Please check your internet connection and try again.'
+        };
+      }
+
       const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
       this.customerInfo = customerInfo;
-      
+
       const isPremium = customerInfo.entitlements.active[REVENUECAT_CONFIG.entitlement] != null;
-      
+
       if (isPremium) {
         // Track successful subscription
         await this.trackSubscriptionEvent('subscription_purchased', packageToPurchase.identifier);
         return { success: true, customerInfo };
       }
-      
+
       return { success: false, error: 'Purchase completed but premium access not activated' };
     } catch (error) {
       if (__DEV__) console.error('Purchase failed:', error);
@@ -263,6 +280,13 @@ class SubscriptionService {
     if (!this.isInitialized) {
       await this.initialize();
     }
+
+    // Check if there was an initialization error
+    if (this.initializationError) {
+      // For critical operations like purchasing, throw the error
+      // For read operations (like getSubscriptionStatus), we'll handle gracefully
+      if (__DEV__) console.warn('RevenueCat initialization error detected:', this.initializationError.message);
+    }
   }
 
   // Get cached customer info
@@ -270,8 +294,25 @@ class SubscriptionService {
     return this.customerInfo;
   }
 
+  // Check if purchase system is available
+  isPurchaseSystemAvailable(): boolean {
+    return this.isInitialized && !this.initializationError;
+  }
+
+  // Get initialization error if any
+  getInitializationError(): Error | null {
+    return this.initializationError;
+  }
+
   // Testing bypass methods (for TestFlight and development)
+  // ⚠️ SECURITY: These methods are only available in development builds
   async enableTestingBypass(): Promise<void> {
+    // SECURITY: Prevent bypass in production builds
+    if (!__DEV__) {
+      if (__DEV__) console.warn('Testing bypass is only available in development builds');
+      return;
+    }
+
     try {
       await AsyncStorage.setItem(this.TESTING_BYPASS_KEY, 'true');
       this.testingBypassEnabled = true;
@@ -282,6 +323,12 @@ class SubscriptionService {
   }
 
   async disableTestingBypass(): Promise<void> {
+    // SECURITY: Prevent bypass in production builds
+    if (!__DEV__) {
+      if (__DEV__) console.warn('Testing bypass is only available in development builds');
+      return;
+    }
+
     try {
       await AsyncStorage.removeItem(this.TESTING_BYPASS_KEY);
       this.testingBypassEnabled = false;
@@ -292,7 +339,8 @@ class SubscriptionService {
   }
 
   isTestingBypassEnabled(): boolean {
-    return this.testingBypassEnabled;
+    // SECURITY: Testing bypass only works in development
+    return __DEV__ && this.testingBypassEnabled;
   }
 }
 

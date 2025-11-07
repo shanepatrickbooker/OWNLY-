@@ -5,6 +5,15 @@ import { analyzeSentiment, SentimentResult } from '../../../utils/sentimentAnaly
 const MOOD_ENTRIES_KEY = 'mood_entries';
 const MOOD_COUNTER_KEY = 'mood_counter';
 
+// Validation constants
+const MAX_REFLECTION_LENGTH = 5000; // Maximum characters for a reflection
+const MAX_ENTRIES_STORAGE = 10000; // Maximum number of entries to prevent storage overflow
+
+// Storage quota monitoring
+const STORAGE_WARNING_THRESHOLD = 0.8; // Warn at 80% capacity
+const ESTIMATED_BYTES_PER_ENTRY = 500; // Rough estimate for average entry size
+const MAX_ASYNC_STORAGE_BYTES = 6 * 1024 * 1024; // 6MB limit on iOS
+
 // Mood entry interface
 export interface MoodEntry {
   id?: number;
@@ -32,35 +41,73 @@ export const initializeDatabase = async (): Promise<void> => {
   }
 };
 
+// Sanitize and validate reflection text
+const sanitizeReflection = (reflection?: string): string | undefined => {
+  if (!reflection) return undefined;
+
+  // Trim whitespace
+  const trimmed = reflection.trim();
+  if (trimmed.length === 0) return undefined;
+
+  // Validate length
+  if (trimmed.length > MAX_REFLECTION_LENGTH) {
+    throw new Error(`Reflection exceeds maximum length of ${MAX_REFLECTION_LENGTH} characters`);
+  }
+
+  return trimmed;
+};
+
 // Insert a new mood entry
 export const saveMoodEntry = async (entry: Omit<MoodEntry, 'id' | 'created_at'>): Promise<number> => {
   try {
+    // Validate and sanitize input
+    const sanitizedReflection = sanitizeReflection(entry.reflection);
+
+    // Validate mood value is in valid range
+    if (entry.mood_value < 1 || entry.mood_value > 5) {
+      throw new Error('Mood value must be between 1 and 5');
+    }
+
     // Get current entries
     const existingData = await AsyncStorage.getItem(MOOD_ENTRIES_KEY);
     const entries: MoodEntry[] = existingData ? JSON.parse(existingData) : [];
-    
+
+    // Check storage limits to prevent overflow
+    if (entries.length >= MAX_ENTRIES_STORAGE) {
+      throw new Error(`Maximum number of entries (${MAX_ENTRIES_STORAGE}) reached. Please export and clear some old data.`);
+    }
+
+    // Check if storage is near capacity
+    const quota = await getStorageQuota();
+    if (quota.isNearLimit) {
+      if (__DEV__) console.warn(`Storage is ${quota.percentUsed}% full. Consider exporting and clearing old data.`);
+    }
+
     // Get and increment counter for new ID
     const counterStr = await AsyncStorage.getItem(MOOD_COUNTER_KEY) || '0';
     const newId = parseInt(counterStr) + 1;
     await AsyncStorage.setItem(MOOD_COUNTER_KEY, newId.toString());
-    
+
     // Analyze sentiment if reflection exists
-    const sentimentData = entry.reflection && entry.reflection.trim().length > 0 
-      ? analyzeSentiment(entry.reflection) 
+    const sentimentData = sanitizedReflection && sanitizedReflection.length > 0
+      ? analyzeSentiment(sanitizedReflection)
       : undefined;
 
     // Create new entry with ID, timestamp, and sentiment data
     const newEntry: MoodEntry = {
       id: newId,
-      ...entry,
+      mood_value: entry.mood_value,
+      mood_label: entry.mood_label,
+      reflection: sanitizedReflection,
+      timestamp: entry.timestamp,
       created_at: new Date().toISOString(),
       sentiment_data: sentimentData
     };
-    
+
     // Add to entries and save
     entries.unshift(newEntry); // Add to beginning for DESC order
     await AsyncStorage.setItem(MOOD_ENTRIES_KEY, JSON.stringify(entries));
-    
+
     if (__DEV__) console.log('Mood entry saved with ID:', newId);
     return newId;
   } catch (error) {
@@ -78,7 +125,9 @@ export const getAllMoodEntries = async (): Promise<MoodEntry[]> => {
     return entries; // Already in DESC order from saveMoodEntry
   } catch (error) {
     if (__DEV__) console.error('Error retrieving mood entries:', error);
-    throw error;
+    // Return empty array instead of throwing to prevent app crashes
+    // This allows the app to continue functioning even if storage is corrupted
+    return [];
   }
 };
 
@@ -92,7 +141,8 @@ export const getRecentMoodEntries = async (limit: number = 10): Promise<MoodEntr
     return recentEntries;
   } catch (error) {
     if (__DEV__) console.error('Error retrieving recent mood entries:', error);
-    throw error;
+    // Return empty array to prevent app crashes
+    return [];
   }
 };
 
@@ -106,7 +156,8 @@ export const getMoodEntryCount = async (): Promise<number> => {
     return count;
   } catch (error) {
     if (__DEV__) console.error('Error getting mood entry count:', error);
-    throw error;
+    // Return 0 to prevent app crashes
+    return 0;
   }
 };
 
@@ -115,18 +166,19 @@ export const getMoodEntriesForDate = async (date: Date): Promise<MoodEntry[]> =>
   try {
     const data = await AsyncStorage.getItem(MOOD_ENTRIES_KEY);
     const entries: MoodEntry[] = data ? JSON.parse(data) : [];
-    
+
     const dateStr = date.toDateString();
     const entriesForDate = entries.filter(entry => {
       const entryDate = new Date(entry.timestamp || entry.created_at || '');
       return entryDate.toDateString() === dateStr;
     });
-    
+
     if (__DEV__) console.log(`Found ${entriesForDate.length} entries for ${dateStr}`);
     return entriesForDate;
   } catch (error) {
     if (__DEV__) console.error('Error getting mood entries for date:', error);
-    throw error;
+    // Return empty array to prevent app crashes
+    return [];
   }
 };
 
@@ -322,5 +374,51 @@ export const clearAllMoodData = async (): Promise<void> => {
   } catch (error) {
     if (__DEV__) console.error('Error clearing mood data:', error);
     throw error;
+  }
+};
+
+// Storage quota monitoring
+export interface StorageQuota {
+  totalEntries: number;
+  estimatedBytes: number;
+  percentUsed: number;
+  isNearLimit: boolean;
+  remainingEntries: number;
+}
+
+export const getStorageQuota = async (): Promise<StorageQuota> => {
+  try {
+    const entries = await getAllMoodEntries();
+    const totalEntries = entries.length;
+
+    // Get actual storage size
+    const data = await AsyncStorage.getItem(MOOD_ENTRIES_KEY);
+    const actualBytes = data ? new Blob([data]).size : 0;
+
+    const percentUsed = (actualBytes / MAX_ASYNC_STORAGE_BYTES) * 100;
+    const isNearLimit = percentUsed >= (STORAGE_WARNING_THRESHOLD * 100);
+
+    // Calculate remaining entries based on average entry size
+    const avgBytesPerEntry = totalEntries > 0 ? actualBytes / totalEntries : ESTIMATED_BYTES_PER_ENTRY;
+    const remainingBytes = MAX_ASYNC_STORAGE_BYTES - actualBytes;
+    const remainingEntries = Math.floor(remainingBytes / avgBytesPerEntry);
+
+    return {
+      totalEntries,
+      estimatedBytes: actualBytes,
+      percentUsed: Math.round(percentUsed * 10) / 10, // Round to 1 decimal
+      isNearLimit,
+      remainingEntries: Math.max(0, remainingEntries)
+    };
+  } catch (error) {
+    if (__DEV__) console.error('Error checking storage quota:', error);
+    // Return safe defaults if check fails
+    return {
+      totalEntries: 0,
+      estimatedBytes: 0,
+      percentUsed: 0,
+      isNearLimit: false,
+      remainingEntries: 1000
+    };
   }
 };
